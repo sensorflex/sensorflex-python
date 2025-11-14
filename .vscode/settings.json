@@ -5,7 +5,9 @@
         "datachannels",
         "iceconnectionstatechange",
         "sensorflex",
-        "webrtc"
+        "webrtc",
+        "Yiqin",
+        "Zhao"
     ],
     "files.exclude": {
         "**/.git": true,

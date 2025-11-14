@@ -1,4 +1,4 @@
-# src/sensorflex/cli/_cli.py
+"""CLI library"""
 
 import rerun as rr
 import argparse
