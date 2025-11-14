@@ -3,13 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    cast,
-)
+from typing import Any, Dict, List, Optional, cast, Callable
 
 import rerun as rr
 from aiortc import (
@@ -157,55 +151,198 @@ class WebSocketSession:
     """
     Handles WebSocket signaling for a single client, and owns an RtcPeer
     configured with specific handlers.
+
+    This object is intentionally *per-connection*. Reconnects should be handled
+    by creating a new WebSocketSession and (optionally) re-attaching any
+    higher-level state in your application code.
     """
 
     def __init__(
         self,
-        websocket: Any,
-        video_handlers: List[BaseVideoTrackHandler],
-        datachannel_handlers: List[BaseDataChannelHandler],
+        websocket: Any,  # ideally: WebSocketServerProtocol
+        video_handlers: List["BaseVideoTrackHandler"],
+        datachannel_handlers: List["BaseDataChannelHandler"],
+        on_closed: Optional[Callable[["WebSocketSession"], None]] = None,
     ) -> None:
         self.websocket = websocket
         self.rtc_peer = RtcPeer(
             video_handlers=video_handlers,
             datachannel_handlers=datachannel_handlers,
         )
+        self._closed = False
+        self._on_closed = on_closed
 
     async def run(self) -> None:
+        """
+        Main loop: receive messages and dispatch them.
+
+        This method only manages the lifetime of a *single* WebSocket connection.
+        If you want automatic reconnects, do that at a higher level by:
+        - retrying the client connection, or
+        - accepting a new connection and creating a new WebSocketSession.
+        """
         try:
             async for message in self.websocket:
-                await self._handle_message(message)
+                await self._handle_raw_message(message)
+        except websockets.exceptions.ConnectionClosedOK as e:
+            LOGGER.info(
+                "WebSocket closed normally (code=%s, reason=%s)", e.code, e.reason
+            )
+        except websockets.exceptions.ConnectionClosedError as e:
+            LOGGER.warning(
+                "WebSocket closed with error (code=%s, reason=%s)", e.code, e.reason
+            )
+        except asyncio.CancelledError:
+            LOGGER.info("WebSocketSession task cancelled")
+            raise
         except Exception:
-            LOGGER.exception("Error in signaling handler")
+            LOGGER.exception("Unexpected error in signaling handler")
+            # Best-effort error report back to client (may fail if already closed)
+            await self._safe_send_error(
+                code="internal_error",
+                message="Unexpected error in signaling handler.",
+            )
         finally:
-            await self.rtc_peer.close()
+            await self._cleanup()
 
-    async def _handle_message(self, message: str) -> None:
-        data: Dict[str, Any] = json.loads(message)
+    # ------------------------------------------------------------------
+    # Message handling
+    # ------------------------------------------------------------------
+    async def _handle_raw_message(self, message: Any) -> None:
+        """Decode JSON and delegate to typed handler."""
+        if isinstance(message, bytes):
+            LOGGER.warning("Ignoring binary message on signaling WebSocket")
+            return
+
+        try:
+            data: Dict[str, Any] = json.loads(message)
+        except json.JSONDecodeError:
+            LOGGER.warning("Received invalid JSON: %r", message)
+            await self._safe_send_error(
+                code="invalid_json",
+                message="Message must be valid JSON.",
+            )
+            return
+
+        await self._handle_message(data)
+
+    async def _handle_message(self, data: Dict[str, Any]) -> None:
         msg_type = data.get("type")
         LOGGER.info("Signaling message from client: %s", msg_type)
 
         if msg_type == "offer":
             await self._handle_offer(data)
+        # You will likely want more types later:
+        # elif msg_type == "candidate": ...
+        # elif msg_type == "ping": ...
         else:
             LOGGER.warning("Unknown signaling message type: %s", msg_type)
+            await self._safe_send_error(
+                code="unknown_message_type",
+                message=f"Unknown signaling message type: {msg_type!r}",
+            )
 
     async def _handle_offer(self, data: Dict[str, Any]) -> None:
-        offer = RTCSessionDescription(sdp=data["sdp"], type="offer")
-        await self.rtc_peer.set_remote_description(offer)
+        sdp = data.get("sdp")
+        if not isinstance(sdp, str):
+            await self._safe_send_error(
+                code="invalid_offer",
+                message="Offer must contain a string 'sdp' field.",
+            )
+            return
 
-        answer = await self.rtc_peer.create_and_set_answer()
-        await self.rtc_peer.wait_for_ice_gathering_complete()
+        try:
+            offer = RTCSessionDescription(sdp=sdp, type="offer")
+            await self.rtc_peer.set_remote_description(offer)
+
+            answer = await self.rtc_peer.create_and_set_answer()
+            await self.rtc_peer.wait_for_ice_gathering_complete()
+        except Exception:
+            LOGGER.exception("Failed to handle offer")
+            await self._safe_send_error(
+                code="offer_handling_failed",
+                message="Failed to handle WebRTC offer.",
+            )
+            return
 
         LOGGER.info("Sending answer")
-        await self.websocket.send(
-            json.dumps(
-                {
-                    "type": answer.type,
-                    "sdp": answer.sdp,
-                }
-            )
+        await self._safe_send_json(
+            {
+                "type": answer.type,
+                "sdp": answer.sdp,
+            }
         )
+
+    # ------------------------------------------------------------------
+    # Sending helpers
+    # ------------------------------------------------------------------
+    async def _safe_send_json(self, payload: Dict[str, Any]) -> None:
+        """Best-effort JSON send that doesn't explode if the socket is closing/closed."""
+        if self._closed:
+            return
+
+        try:
+            await self.websocket.send(json.dumps(payload))
+        except websockets.exceptions.ConnectionClosed:
+            LOGGER.info("Attempted to send on closed WebSocket")
+            self._closed = True
+        except Exception:
+            LOGGER.exception("Error while sending WebSocket message")
+
+    async def _safe_send_error(self, code: str, message: str) -> None:
+        """
+        Send a structured error message.
+
+        Clients can standardize on this shape for debugging / UI:
+        {
+          "type": "error",
+          "error": {
+            "code": "<machine-readable>",
+            "message": "<human-readable>"
+          }
+        }
+        """
+        LOGGER.error("Sending error to client (%s): %s", code, message)
+        await self._safe_send_json(
+            {
+                "type": "error",
+                "error": {
+                    "code": code,
+                    "message": message,
+                },
+            }
+        )
+
+    # ------------------------------------------------------------------
+    # Cleanup / close
+    # ------------------------------------------------------------------
+    async def _cleanup(self) -> None:
+        if self._closed:
+            # Already cleaned up
+            if self._on_closed:
+                self._on_closed(self)
+            return
+
+        self._closed = True
+
+        try:
+            await self.rtc_peer.close()
+        except Exception:
+            LOGGER.exception("Error closing RtcPeer")
+
+        # Try to close websocket gracefully if it's still open
+        try:
+            await self.websocket.close()
+        except websockets.exceptions.ConnectionClosed:
+            pass
+        except Exception:
+            LOGGER.exception("Error closing WebSocket")
+
+        if self._on_closed:
+            try:
+                self._on_closed(self)
+            except Exception:
+                LOGGER.exception("Error in on_closed callback")
 
 
 # ---------------------------------------------------------------------------
