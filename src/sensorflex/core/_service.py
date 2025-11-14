@@ -37,8 +37,6 @@ LOGGER = get_logger("_service")
 # ---------------------------------------------------------------------------
 # RTCPeerConnection wrapper
 # ---------------------------------------------------------------------------
-
-
 class RtcPeer:
     """
     Wraps RTCPeerConnection and delegates track/datachannel events to
@@ -155,8 +153,6 @@ class RtcPeer:
 # ---------------------------------------------------------------------------
 # WebSocketSession: signaling layer
 # ---------------------------------------------------------------------------
-
-
 class WebSocketSession:
     """
     Handles WebSocket signaling for a single client, and owns an RtcPeer
@@ -215,9 +211,66 @@ class WebSocketSession:
 # ---------------------------------------------------------------------------
 # Server startup helpers
 # ---------------------------------------------------------------------------
-
-
 async def start_main_service(
+    websocket_host: str = "0.0.0.0",
+    websocket_port: int = 8765,
+    *,
+    video_track_handlers: Optional[List[BaseVideoTrackHandler]] = None,
+    datachannel_handlers: Optional[List[BaseDataChannelHandler]] = None,
+) -> None:
+    """
+    Start the WebSocket signaling server.
+
+    Intended to be called from outside; default behavior is configurable:
+
+    - use_default_rerun_video_visualization:
+        If True, attach an internal RerunVideoVisualizationHandler that logs
+        incoming video frames to Rerun under '@sensorflex/camera_rgb_webrtc_bgr24'.
+
+    - use_default_png_uint8_visualization:
+        If True, attach an internal RerunChunkedPngDataChannelHandler that expects a
+        PNG-uint8 datachannel with label '@sensorflex/camera_rgb_png_uint8'
+        and logs it to Rerun under that name.
+
+    - extra_video_handlers:
+        Optional additional video handlers (e.g. user-defined subclasses).
+
+    - extra_datachannel_handlers:
+        Optional additional datachannel handlers (e.g. depth, pose, etc.).
+    """
+
+    async def _handle_client(websocket):
+        LOGGER.info(
+            "New WebSocket signaling connection from %s", websocket.remote_address
+        )
+
+        video_handler_list: List[BaseVideoTrackHandler] = []
+        datachannel_handler_list: List[BaseDataChannelHandler] = []
+
+        # Extra handlers provided by caller (third-party / framework code)
+        if video_track_handlers:
+            video_handler_list.extend(video_track_handlers)
+
+        if datachannel_handlers:
+            datachannel_handler_list.extend(datachannel_handlers)
+
+        session = WebSocketSession(
+            websocket=websocket,
+            video_handlers=video_handler_list,
+            datachannel_handlers=datachannel_handler_list,
+        )
+        await session.run()
+
+    async with websockets.serve(_handle_client, websocket_host, websocket_port):
+        LOGGER.info(
+            "WebSocket signaling server listening on ws://%s:%d",
+            websocket_host,
+            websocket_port,
+        )
+        await asyncio.Future()  # run forever
+
+
+async def start_main_service_with_visualization(
     websocket_host: str = "0.0.0.0",
     websocket_port: int = 8765,
     *,
@@ -246,6 +299,7 @@ async def start_main_service(
     - extra_datachannel_handlers:
         Optional additional datachannel handlers (e.g. depth, pose, etc.).
     """
+    rr.init("SensorFlex Real-time Visualization", spawn=True)
 
     async def _handle_client(websocket):
         LOGGER.info(
@@ -288,8 +342,6 @@ async def start_main_service(
 # ---------------------------------------------------------------------------
 # Example entry point (can be omitted when integrated into a framework)
 # ---------------------------------------------------------------------------
-
-
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
 
@@ -298,7 +350,7 @@ async def main() -> None:
     caps = RTCRtpSender.getCapabilities("video")
     LOGGER.info("Available video codecs: %s", [c.mimeType for c in caps.codecs])
 
-    await start_main_service(
+    await start_main_service_with_visualization(
         websocket_host="0.0.0.0",
         websocket_port=8765,
         use_default_rerun_video_visualization=True,

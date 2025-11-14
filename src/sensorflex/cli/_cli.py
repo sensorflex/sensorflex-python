@@ -1,8 +1,7 @@
 """CLI library"""
 
-import rerun as rr
 import argparse
-from sensorflex.core._service import start_main_service
+from sensorflex.core._service import start_main_service_with_visualization
 from sensorflex.utils.logging import configure_default_logging
 
 
@@ -16,12 +15,10 @@ def main():
 
     configure_default_logging()
 
-    rr.init("SensorFlex Real-time Visualization", spawn=True)
-
     import asyncio
 
     asyncio.run(
-        start_main_service(
+        start_main_service_with_visualization(
             websocket_host=args.host,
             websocket_port=args.port,
             use_default_rerun_video_visualization=not args.no_video,
