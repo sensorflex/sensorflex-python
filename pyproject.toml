@@ -6,9 +6,17 @@ description = "SensorFlex Python client"
 authors = [{ name = "Yiqin Zhao", email = "yzigm@rit.edu" }]
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["aiortc (>=1.14.0,<2.0.0)", "websockets (>=15.0.1,<16.0.0)", "rerun-sdk (>=0.27.0,<0.28.0)", "av (>=16.0.1,<17.0.0)", "pillow (>=12.0.0,<13.0.0)"]
-
+dependencies = [
+    "aiortc (>=1.14.0,<2.0.0)",
+    "websockets (>=15.0.1,<16.0.0)",
+    "rerun-sdk (>=0.27.0,<0.28.0)",
+    "av (>=16.0.1,<17.0.0)",
+    "pillow (>=12.0.0,<13.0.0)",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[project.scripts]
+sensorflex = "sensorflex.cli._cli:main"

@@ -1,5 +1,10 @@
 {
     "cSpell.words": [
-        "sensorflex"
+        "aiortc",
+        "connectionstatechange",
+        "datachannels",
+        "iceconnectionstatechange",
+        "sensorflex",
+        "webrtc"
     ]
 }
