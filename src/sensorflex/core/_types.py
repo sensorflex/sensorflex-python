@@ -12,9 +12,7 @@ from typing import (
 )
 from abc import ABC, abstractmethod
 
-from aiortc import (
-    MediaStreamTrack,
-)
+from aiortc import MediaStreamTrack, RTCDataChannel
 
 import numpy as np
 from sensorflex.utils.logging import get_logger
@@ -23,9 +21,42 @@ LOGGER = get_logger("_service")
 
 H = TypeVar("H", bound="BaseDataHeader")
 
-# ---------------------------------------------------------------------------
-# Base binary headers
-# ---------------------------------------------------------------------------
+
+class BaseVideoTrackHandler(ABC):
+    """
+    Base class for video track handlers.
+
+    Subclasses must define:
+
+        name: str = "@sensorflex/..."
+
+    which is used as an identifier / stream name (e.g., for Rerun entity path).
+    """
+
+    name: str  # must be defined by subclasses
+
+    def __init__(self) -> None:
+        if not getattr(self, "name", None):
+            raise ValueError(
+                f"{self.__class__.__name__} must define a non-empty 'name' class attribute"
+            )
+
+    @abstractmethod
+    def on_frame_received(
+        self,
+        frame_idx: int,
+        ts: float,
+        img_bgr: np.ndarray,
+        track: MediaStreamTrack,
+    ) -> None:
+        """
+        Handle a decoded video frame from a MediaStreamTrack.
+
+        - frame_idx: monotonically increasing index for this track.
+        - ts: sender-side timestamp (seconds).
+        - img_bgr: numpy array in BGR24 format.
+        """
+        raise NotImplementedError
 
 
 @dataclass
@@ -69,35 +100,6 @@ class BaseDataHeader:
         return version_size + struct_size
 
 
-@dataclass
-class BaseChunkedDataHeader(BaseDataHeader):
-    """
-    Base header for chunked messages.
-
-    Dynamic fields (per frame/chunk):
-        - frame_id: int
-        - chunk_idx: int
-        - total_chunks: int
-        - payload_len: int
-
-    Default INNER_STRUCT_FMT handles exactly these fields:
-        "IHHI"  (frame_id, chunk_idx, total_chunks, payload_len)
-    """
-
-    frame_id: int
-    chunk_idx: int
-    total_chunks: int
-    payload_len: int
-
-    # Default layout for standard chunk headers
-    INNER_STRUCT_FMT: ClassVar[str] = "IHHI"
-
-
-# ---------------------------------------------------------------------------
-# Abstract handler types
-# ---------------------------------------------------------------------------
-
-
 class BaseDataChannelHandler(ABC):
     """
     Base class for data channel handlers.
@@ -111,6 +113,7 @@ class BaseDataChannelHandler(ABC):
     """
 
     name: str  # must be defined by subclasses
+    channel: Optional[RTCDataChannel]
 
     def __init__(self) -> None:
         if not getattr(self, "name", None):
@@ -136,8 +139,13 @@ class BaseDataChannelHandler(ABC):
         """
         raise NotImplementedError
 
-    # ---- generic header parsing helper ----
+    def send_message(self, message: bytes) -> None:
+        if self.channel is None:
+            raise ValueError("Handler not registered with channel.")
 
+        self.channel.send(message)
+
+    # ---- generic header parsing helper ----
     @staticmethod
     def parse_struct_header(
         buf: memoryview,
@@ -210,46 +218,28 @@ class BaseDataChannelHandler(ABC):
         return header_cls(*values)  # type: ignore[call-arg]
 
 
-class BaseVideoTrackHandler(ABC):
+@dataclass
+class BaseChunkedDataHeader(BaseDataHeader):
     """
-    Base class for video track handlers.
+    Base header for chunked messages.
 
-    Subclasses must define:
+    Dynamic fields (per frame/chunk):
+        - frame_id: int
+        - chunk_idx: int
+        - total_chunks: int
+        - payload_len: int
 
-        name: str = "@sensorflex/..."
-
-    which is used as an identifier / stream name (e.g., for Rerun entity path).
+    Default INNER_STRUCT_FMT handles exactly these fields:
+        "IHHI"  (frame_id, chunk_idx, total_chunks, payload_len)
     """
 
-    name: str  # must be defined by subclasses
+    frame_id: int
+    chunk_idx: int
+    total_chunks: int
+    payload_len: int
 
-    def __init__(self) -> None:
-        if not getattr(self, "name", None):
-            raise ValueError(
-                f"{self.__class__.__name__} must define a non-empty 'name' class attribute"
-            )
-
-    @abstractmethod
-    def on_frame_received(
-        self,
-        frame_idx: int,
-        ts: float,
-        img_bgr: np.ndarray,
-        track: MediaStreamTrack,
-    ) -> None:
-        """
-        Handle a decoded video frame from a MediaStreamTrack.
-
-        - frame_idx: monotonically increasing index for this track.
-        - ts: sender-side timestamp (seconds).
-        - img_bgr: numpy array in BGR24 format.
-        """
-        raise NotImplementedError
-
-
-# ---------------------------------------------------------------------------
-# Base class for chunked datachannel handlers
-# ---------------------------------------------------------------------------
+    # Default layout for standard chunk headers
+    INNER_STRUCT_FMT: ClassVar[str] = "IHHI"
 
 
 class BaseChunkedDataChannelHandler(BaseDataChannelHandler):

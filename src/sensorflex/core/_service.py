@@ -11,6 +11,7 @@ from aiortc import (
     RTCSessionDescription,
     MediaStreamTrack,
     RTCRtpSender,
+    RTCDataChannel,
 )
 from av import VideoFrame
 import websockets
@@ -83,7 +84,7 @@ class RtcPeer:
                 task.add_done_callback(_done_callback)
 
         @self.pc.on("datachannel")
-        def _on_datachannel(channel) -> None:
+        def _on_datachannel(channel: RTCDataChannel) -> None:
             LOGGER.info("New data channel: label=%s", channel.label)
 
             handler = next(
@@ -96,6 +97,9 @@ class RtcPeer:
                     "No handler registered for datachannel label '%s'", channel.label
                 )
                 return
+
+            # Register current channel for the handler.
+            handler.channel = channel
 
             @channel.on("message")
             def _on_message(message) -> None:
