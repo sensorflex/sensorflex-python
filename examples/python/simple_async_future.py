@@ -1,33 +1,36 @@
 """A simple example for using async Future objects."""
 
-from asyncio import Future, create_task, sleep, run
+from asyncio import sleep, run
 
 from typing import Any
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Node, Graph, Port, FutureOp, FutureState
 
 
 class AsyncStepNode(Node):
     state: Port[str]
-    f_fetch: Future | None = None
+
+    fetch_fop: FutureOp[str]
 
     def __init__(self, name: str | None = None) -> None:
         super().__init__(name)
         self.state = Port("None")
+        self.fetch_fop = FutureOp(self.fetch_data)
 
     def forward(self):
-        if self.f_fetch is None:
-            self.f_fetch = create_task(self.fetch_data())
-            self.state <<= "Started"
-        else:
-            if self.f_fetch.done():
-                self.state <<= "Done"
-                self.f_fetch = None
-            else:
+        match self.fetch_fop.step():
+            case FutureState.STARTED:
+                self.state <<= "Started"
+            case FutureState.RUNNING:
                 self.state <<= "Running"
+            case FutureState.COMPLETED:
+                res = self.fetch_fop.get_result()
+                assert res is not None
+                self.state <<= "Done" + res
 
-    async def fetch_data(self):
+    async def fetch_data(self) -> str:
         await sleep(5.0)
+        return "123"
 
 
 class PrintNode(Node):
