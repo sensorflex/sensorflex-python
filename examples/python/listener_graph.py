@@ -1,6 +1,6 @@
 """A simple compute graph example."""
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Node, Port, ListenerGraph
 
 import time
 import numpy as np
@@ -65,40 +65,30 @@ class PrintNode(Node):
 
 
 # Define a graph
-def get_graph(i):
-    g = Graph()
+def get_graph():
+    g = ListenerGraph()
     n1 = g << ImageLoadingNode()
+    g.watch(n1.i)
+
     n2 = g << ImageTransformationNode()
     g <<= n1.bgr >> n2.bgr
-    __ = g << WaitNode(i)
+
+    # __ = g << WaitNode(2)
+
     n3 = g << PrintNode()
     g <<= n3.field << n2.bgr
 
     return g, n1
 
 
-def run_sync():
-    g, n1 = get_graph(1)
-
-    for i in range(5):
-        g, n1 = get_graph(i)
-        n1.i <<= i
-        g.run()
-
-
-def run_in_thread():
-    threads = []
-
-    # Now execute
-    for i in range(5):
-        g, n1 = get_graph(i)
-        n1.i <<= i
-        t = g.run_in_thread()
-        threads.append(t)
-
-    for t in threads:
-        t.join()
-
-
 if __name__ == "__main__":
-    run_in_thread()
+    g, n1 = get_graph()
+    g.run_and_wait_in_thread()
+
+    for i in range(5):
+        with g.update():
+            n1.i <<= i
+
+        time.sleep(2)
+
+    g.stop()

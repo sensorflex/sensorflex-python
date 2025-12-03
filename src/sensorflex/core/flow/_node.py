@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar, get_type_hints, get_origin, Tuple, Optional
+from typing import (
+    Any,
+    Generic,
+    TypeVar,
+    get_type_hints,
+    get_origin,
+    Tuple,
+    Optional,
+    TYPE_CHECKING,
+)
+
+if TYPE_CHECKING:
+    from ._graph import ListenerGraph
 
 
 T = TypeVar("T")
@@ -11,13 +23,18 @@ N = TypeVar("N")
 
 class Port(Generic[T]):
     value: Optional[T]
-    parent_node: Node
+    parent_node: Node | AsyncNode
+    graph_to_notify: Optional[ListenerGraph] = None
 
     def __init__(self, value: Optional[T]) -> None:
         self.value = value
 
     def __ilshift__(self, value: T) -> Port[T]:
         self.value = value
+
+        if self.graph_to_notify is not None:
+            self.graph_to_notify.on_port_change(self)
+
         return self
 
     def __invert__(self) -> T:
@@ -38,9 +55,7 @@ class Node:
         super().__init__()
         self.name = name if name is not None else self.__class__.__name__
 
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
+    def __register_ports__(self) -> None:
         self._ports: dict[str, Port[Any]] = {}
 
         hints = get_type_hints(type(self))
@@ -56,4 +71,30 @@ class Node:
         # print(hints)
 
     def forward(self):
+        pass
+
+
+class AsyncNode:
+    name: str
+
+    def __init__(self, name: Optional[str] = None) -> None:
+        super().__init__()
+        self.name = name if name is not None else self.__class__.__name__
+
+    def __register_ports__(self) -> None:
+        self._ports: dict[str, Port[Any]] = {}
+
+        hints = get_type_hints(type(self))
+
+        for name, hint in hints.items():
+            if get_origin(hint) is Port and hasattr(self, name):
+                port_obj = getattr(self, name)
+
+                if isinstance(port_obj, Port):
+                    self._ports[name] = port_obj
+                    port_obj.parent_node = self
+
+        # print(hints)
+
+    async def forward(self):
         pass
