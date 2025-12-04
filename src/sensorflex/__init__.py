@@ -16,7 +16,7 @@ from .core.flow import (
     ThreadOp,
     ThreadState,
 )
-from .core.io import WebSocketServer, WebcamNode
+from .library.io import WebSocketServer, WebcamNode
 
 __all__ = [
     "Node",

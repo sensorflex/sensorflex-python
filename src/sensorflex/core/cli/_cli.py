@@ -1,7 +1,7 @@
 """CLI library"""
 
 import argparse
-from sensorflex.core.io import start_webrtc_service_with_visualization
+from sensorflex.library.io import start_webrtc_service_with_visualization
 from sensorflex.utils.logging import configure_default_logging
 
 
