@@ -24,7 +24,14 @@ async def main():
 
     g.watch(n1.last_message)
 
-    await g.run_and_wait_for_change()
+    # await g.run_and_wait_forever()
+    # _ = g.run_and_wait_forever()
+    t = g.run_and_wait_forever_as_task()
+
+    for i in range(5):
+        await asyncio.sleep(3)
+
+    t.cancel()
 
 
 if __name__ == "__main__":
