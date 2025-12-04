@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import numpy as np
 from threading import Thread, Event
 from numpy.typing import NDArray
@@ -79,11 +80,15 @@ class ListenerGraph(Graph):
         super().__init__()
 
         self._stop_event = Event()
+        self._waiting = False
         self.ports_to_listen = []
         self.ports_changed = []
 
     def on_port_change(self, port: Port):
         self.ports_changed.append(port)
+
+        if self._waiting and port in self.ports_to_listen:
+            self.run()
 
     def watch(self, port: Port) -> None:
         port.graph_to_notify = self
@@ -105,6 +110,10 @@ class ListenerGraph(Graph):
         t = Thread(target=_thread_main)
         t.start()
         return t
+
+    async def run_and_wait_for_change(self):
+        self._waiting = True
+        await asyncio.Future()
 
     def stop(self):
         self._stop_event.set()
