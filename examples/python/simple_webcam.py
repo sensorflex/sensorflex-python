@@ -1,10 +1,10 @@
 """A simple compute graph example."""
 
 import cv2
-import numpy as np
+import asyncio
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Node, ListenerGraph, Port, WebcamNode
 
 
 class VFXNode(Node):
@@ -32,37 +32,29 @@ class PrintShapeNode(Node):
 
     def forward(self):
         arr = ~self.arr
+        cv2.imshow("Print", arr)
+        cv2.waitKey(1)  # Important for OpenCV GUI.
         print(arr.shape)
 
 
 # Define a graph
 def get_graph():
-    g = Graph()
-    n1 = g << VFXNode()
-    n2 = g << PrintShapeNode()
-    g <<= n1.output >> n2.arr
+    g = ListenerGraph()
+    n1 = g << WebcamNode()
+    n2 = g << VFXNode()
+    g <<= n1.last_frame >> n2.frame
+    n3 = g << PrintShapeNode()
+    g <<= n2.output >> n3.arr
 
-    return g, n1
+    g.watch(n1.last_frame)
+
+    return g
 
 
-def main():
-    g, n1 = get_graph()
-
-    cap = cv2.VideoCapture(0)
-
-    while True:
-        ret, frame = cap.read()
-
-        # Apply graph
-        n1.frame <<= frame
-        g.run()
-
-        cv2.imshow("Webcam", ~n1.output)
-
-        # Exit if 'q' is pressed
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+async def main():
+    g = get_graph()
+    await g.run_and_wait_forever()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

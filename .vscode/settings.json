@@ -4,6 +4,7 @@
         "connectionstatechange",
         "datachannels",
         "iceconnectionstatechange",
+        "imshow",
         "sensorflex",
         "webrtc",
         "Yiqin",

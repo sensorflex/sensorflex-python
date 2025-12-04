@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import numpy as np
-from threading import Thread, Event
+from threading import Thread
 from numpy.typing import NDArray
 from typing import Any, TypeVar, Tuple, List, Dict, cast
 
@@ -86,6 +86,9 @@ class ListenerGraph(Graph):
         # For async/event-driven mode in a dedicated thread
         self._event_queue: asyncio.Queue[Port] = asyncio.Queue()
 
+        # The asyncio event loop that will run run_and_wait_forever()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
     def watch(self, port: Port) -> None:
         port.graph_to_notify = self
         self.ports_to_listen.add(port)
@@ -102,11 +105,18 @@ class ListenerGraph(Graph):
             self.ports_changed.append(port)
             return
 
-        q = self._event_queue
-        q.put_nowait(port)
+        # IMPORTANT: this may be called from another thread
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            # Schedule the queue put in a thread-safe way
+            loop.call_soon_threadsafe(self._event_queue.put_nowait, port)
+        else:
+            # Fallback if we somehow don't have a loop yet / same-thread use
+            self._event_queue.put_nowait(port)
 
     async def run_and_wait_forever(self) -> None:
-        assert self._event_queue is not None
+        # Record which loop we are running on
+        self._loop = asyncio.get_running_loop()
         while True:
             _ = await self._event_queue.get()
             self.run()
