@@ -1,12 +1,12 @@
 """A simple compute graph example."""
 
-from sensorflex import Node, Port, ListenerGraph
-
 import time
+import asyncio
 import numpy as np
+from typing import Any
 from numpy.typing import NDArray
 
-from typing import Any
+from sensorflex import Node, Port, Graph
 
 
 # Define your nodes
@@ -66,7 +66,7 @@ class PrintNode(Node):
 
 # Define a graph
 def get_graph():
-    g = ListenerGraph()
+    g = Graph()
     n1 = g << ImageLoadingNode()
     g.watch(n1.i)
 
@@ -81,14 +81,17 @@ def get_graph():
     return g, n1
 
 
-if __name__ == "__main__":
+async def main():
     g, n1 = get_graph()
-    g.run_and_wait_in_thread()
+    t = g.run_and_wait_forever_as_task()
 
     for i in range(5):
         with g.update():
             n1.i <<= i
+            await asyncio.sleep(0.5)
 
-        time.sleep(2)
+    t.cancel()
 
-    g.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())

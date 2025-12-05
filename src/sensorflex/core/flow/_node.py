@@ -14,7 +14,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from ._graph import ListenerGraph
+    from ._graph import Graph
 
 
 T = TypeVar("T")
@@ -24,7 +24,7 @@ N = TypeVar("N")
 class Port(Generic[T]):
     value: Optional[T]
     parent_node: Node
-    graph_to_notify: Optional[ListenerGraph] = None
+    graph_to_notify: Optional[Graph] = None
 
     def __init__(self, value: Optional[T]) -> None:
         self.value = value
@@ -72,3 +72,11 @@ class Node:
 
     def forward(self):
         pass
+
+
+class IntegratedNode:
+    """Integrate graph into a node."""
+
+    __graph: Graph
+
+    pass

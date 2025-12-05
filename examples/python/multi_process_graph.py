@@ -1,13 +1,12 @@
 """A simple compute graph example."""
 
-from sensorflex import Node, Graph, Port
-
 import time
 import numpy as np
 import multiprocessing as mp
+from typing import Any
 from numpy.typing import NDArray
 
-from typing import Any
+from sensorflex import Node, Graph, Port
 
 
 # Define your nodes

@@ -2,7 +2,8 @@
 
 import asyncio
 from typing import Any
-from sensorflex import ListenerGraph, Node, Port, WebSocketServer
+
+from sensorflex import Graph, Node, Port, WebSocketServer
 
 
 class PrintNode(Node):
@@ -17,7 +18,7 @@ class PrintNode(Node):
 
 
 async def main():
-    g = ListenerGraph()
+    g = Graph()
     n1 = g << WebSocketServer()
     n2 = g << PrintNode()
     g <<= n1.last_message >> n2.field

@@ -6,7 +6,7 @@ import asyncio
 import numpy as np
 from threading import Thread
 from numpy.typing import NDArray
-from typing import Any, TypeVar, Tuple, List, Dict, cast
+from typing import Any, TypeVar, Tuple, List, Dict
 
 from ._node import Node, Port
 
@@ -15,11 +15,32 @@ G = TypeVar("G", bound=Node)
 
 
 class Graph:
+    nodes: List[Node]
+    edges: List[Tuple[Port, Port]]
+
+    __batching: bool
+    __node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+    __ports_to_listen: set[Port]
+    __ports_changed: List[Port]
+
+    __event_queue: asyncio.Queue[Port]
+    __loop: asyncio.AbstractEventLoop | None = None
+
     def __init__(self) -> None:
-        self.nodes: List[Node] = []
+        self.nodes = []
         self.edges = []
 
+        # Ports we care about
         self.__node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
+        self.__ports_to_listen: set[Port] = set()
+
+        # For batched (sync) updates
+        self.__batching = False
+        self.__ports_changed = []
+
+        # For async/event-driven mode in a dedicated thread
+        self.__event_queue = asyncio.Queue()
+        self.__loop = None
 
     def add(self, node: G) -> G:
         node.__register_ports__()
@@ -70,54 +91,40 @@ class Graph:
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
 
-
-class ListenerGraph(Graph):
-    def __init__(self) -> None:
-        super().__init__()
-
-        # Ports we care about
-        self.ports_to_listen: set[Port] = set()
-
-        # For batched (sync) updates
-        self._batching: bool = False
-        self.ports_changed: list[Port] = []
-
-        # For async/event-driven mode in a dedicated thread
-        self._event_queue: asyncio.Queue[Port] = asyncio.Queue()
-
-        # The asyncio event loop that will run run_and_wait_forever()
-        self._loop: asyncio.AbstractEventLoop | None = None
+    # class ListenerGraph(Graph):
+    #     def __init__(self) -> None:
+    #         super().__init__()
 
     def watch(self, port: Port) -> None:
         port.graph_to_notify = self
-        self.ports_to_listen.add(port)
+        self.__ports_to_listen.add(port)
 
     def on_port_change(self, port: Port) -> None:
         """
         Called from wherever the port is updated. This might be in another thread.
         """
-        if port not in self.ports_to_listen:
+        if port not in self.__ports_to_listen:
             return
 
-        if self._batching:
+        if self.__batching:
             # Sync/batched mode: just collect.
-            self.ports_changed.append(port)
+            self.__ports_changed.append(port)
             return
 
         # IMPORTANT: this may be called from another thread
-        loop = self._loop
+        loop = self.__loop
         if loop is not None and loop.is_running():
             # Schedule the queue put in a thread-safe way
-            loop.call_soon_threadsafe(self._event_queue.put_nowait, port)
+            loop.call_soon_threadsafe(self.__event_queue.put_nowait, port)
         else:
             # Fallback if we somehow don't have a loop yet / same-thread use
-            self._event_queue.put_nowait(port)
+            self.__event_queue.put_nowait(port)
 
     async def run_and_wait_forever(self) -> None:
         # Record which loop we are running on
-        self._loop = asyncio.get_running_loop()
+        self.__loop = asyncio.get_running_loop()
         while True:
-            _ = await self._event_queue.get()
+            _ = await self.__event_queue.get()
             self.run()
 
     def run_and_wait_forever_as_task(self) -> asyncio.Task:
@@ -126,38 +133,38 @@ class ListenerGraph(Graph):
     def update(self) -> ListenerGraphUpdateContext:
         return ListenerGraphUpdateContext(self)
 
-    def __ilshift__(self, edge: Tuple[Port, Port]) -> ListenerGraph:
-        g = super().__ilshift__(edge)
-        return cast(ListenerGraph, g)
+    # def __ilshift__(self, edge: Tuple[Port, Port]) -> ListenerGraph:
+    #     g = super().__ilshift__(edge)
+    #     return cast(ListenerGraph, g)
 
 
 class ListenerGraphUpdateContext:
-    graph: ListenerGraph
+    graph: Graph
 
-    def __init__(self, graph: ListenerGraph):
+    def __init__(self, graph: Graph):
         self.graph = graph
         self._prev_batching: bool | None = None
 
     def __enter__(self):
         # Save previous batching state so contexts can be nested safely.
-        self._prev_batching = self.graph._batching
+        self._prev_batching = self.graph.__batching
 
         # Enter batching mode
-        self.graph._batching = True
-        self.graph.ports_changed.clear()
+        self.graph.__batching = True
+        self.graph.__ports_changed.clear()
 
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Leave batching mode
-        self.graph._batching = (
+        self.graph.__batching = (
             self._prev_batching if self._prev_batching is not None else False
         )
 
-        if self.graph.ports_changed:
+        if self.graph.__ports_changed:
             # At least one watched port changed while in the context
             self.graph.run()
-            self.graph.ports_changed.clear()
+            self.graph.__ports_changed.clear()
 
         # Do not suppress exceptions
         return False

@@ -1,7 +1,6 @@
 """A simple example for using async Future objects."""
 
 from asyncio import sleep, run
-
 from typing import Any
 
 from sensorflex import Node, Graph, Port, FutureOp, FutureState
