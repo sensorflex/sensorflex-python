@@ -23,7 +23,7 @@ N = TypeVar("N")
 
 class Port(Generic[T]):
     value: Optional[T]
-    parent_node: Node | AsyncNode
+    parent_node: Node
     graph_to_notify: Optional[ListenerGraph] = None
 
     def __init__(self, value: Optional[T]) -> None:
@@ -71,30 +71,4 @@ class Node:
         # print(hints)
 
     def forward(self):
-        pass
-
-
-class AsyncNode:
-    name: str
-
-    def __init__(self, name: Optional[str] = None) -> None:
-        super().__init__()
-        self.name = name if name is not None else self.__class__.__name__
-
-    def __register_ports__(self) -> None:
-        self._ports: dict[str, Port[Any]] = {}
-
-        hints = get_type_hints(type(self))
-
-        for name, hint in hints.items():
-            if get_origin(hint) is Port and hasattr(self, name):
-                port_obj = getattr(self, name)
-
-                if isinstance(port_obj, Port):
-                    self._ports[name] = port_obj
-                    port_obj.parent_node = self
-
-        # print(hints)
-
-    async def forward(self):
         pass

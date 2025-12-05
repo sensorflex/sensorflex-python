@@ -19,4 +19,4 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [project.scripts]
-sensorflex = "sensorflex.cli._cli:main"
+sensorflex = "sensorflex.core.cli._cli:main"

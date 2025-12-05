@@ -8,21 +8,20 @@ from threading import Thread
 from numpy.typing import NDArray
 from typing import Any, TypeVar, Tuple, List, Dict, cast
 
-from ._node import Node, AsyncNode, Port
+from ._node import Node, Port
 
 
 G = TypeVar("G", bound=Node)
-AG = TypeVar("AG", bound=AsyncNode)
 
 
 class Graph:
     def __init__(self) -> None:
-        self.nodes: List[Node | AsyncNode] = []
+        self.nodes: List[Node] = []
         self.edges = []
 
-        self.__node_edge_map: Dict[Node | AsyncNode, List[Tuple[Port, Port]]] = {}
+        self.__node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
 
-    def add(self, node: G | AG) -> G | AG:
+    def add(self, node: G) -> G:
         node.__register_ports__()
         self.nodes.append(node)
         return node
@@ -49,7 +48,7 @@ class Graph:
         t.start()
         return t
 
-    def __lshift__(self, node: G | AG) -> G | AG:
+    def __lshift__(self, node: G) -> G:
         self.add(node)
         return node
 
