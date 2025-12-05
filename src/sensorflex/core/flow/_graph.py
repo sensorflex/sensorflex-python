@@ -96,7 +96,7 @@ class Graph:
     #         super().__init__()
 
     def watch(self, port: Port) -> None:
-        port.graph_to_notify = self
+        port.__graph_to_notify = self
         self.__ports_to_listen.add(port)
 
     def on_port_change(self, port: Port) -> None:

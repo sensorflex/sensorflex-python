@@ -24,7 +24,8 @@ N = TypeVar("N")
 class Port(Generic[T]):
     value: Optional[T]
     parent_node: Node
-    graph_to_notify: Optional[Graph] = None
+
+    __graph_to_notify: Optional[Graph] = None
 
     def __init__(self, value: Optional[T]) -> None:
         self.value = value
@@ -32,8 +33,8 @@ class Port(Generic[T]):
     def __ilshift__(self, value: T) -> Port[T]:
         self.value = value
 
-        if self.graph_to_notify is not None:
-            self.graph_to_notify.on_port_change(self)
+        if self.__graph_to_notify is not None:
+            self.__graph_to_notify.on_port_change(self)
 
         return self
 
