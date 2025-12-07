@@ -3,211 +3,170 @@
 from __future__ import annotations
 
 import asyncio
-import numpy as np
 from threading import Thread
-from numpy.typing import NDArray
-from typing import Any, TypeVar, Tuple, List, Dict
+from typing import TypeVar, Tuple, List, Dict, Self, overload, cast
 
-from ._node import Node, Port
+from ._node import Node
+from ._operator import Port, Action
+
+NP = TypeVar("NP", bound=Node)
+
+
+class Pipeline:
+    """A pipeline is a part of graph that describes the execution order of nodes."""
+
+    nodes: List[Node]
+    edges: List[Tuple[Port | Action, Port]]
+    parent_graph: Graph
+
+    _node_edge_map: Dict[Node, List[Tuple[Port | Action, Port]]]
+
+    def __init__(self, parent_graph: Graph) -> None:
+        self.nodes = []
+        self.edges = []
+        self._node_edge_map = {}
+        self.parent_graph = parent_graph
+
+    def add_edge(self, edge_from: Action | Port, edge_to: Port):
+        t = (edge_from, edge_to)
+        self.edges.append(t)
+
+        if edge_to.parent_node in self._node_edge_map:
+            self._node_edge_map[edge_to.parent_node].append(t)
+        else:
+            self._node_edge_map[edge_to.parent_node] = [t]
+
+    def run(self):
+        for node in self.nodes:
+            # async with asyncio.TaskGroup() as tg:
+            if node in self._node_edge_map:
+                if self._node_edge_map[node] is not None:
+                    for port_a, port_b in self._node_edge_map[node]:
+                        # Flow data between ports
+                        port_b.value = port_a.value
+
+            node.forward()
+
+    @overload
+    def __or__(self, node_or_edge: NP) -> NP: ...
+
+    @overload
+    def __or__(self, node_or_edge: Tuple[Port, Port]) -> Self: ...
+
+    def __or__(self, node_or_edge):
+        if isinstance(node_or_edge, tuple):
+            edge: Tuple[Port, Port] = node_or_edge
+            self.edges.append(edge)
+
+            receiver_node = edge[1].parent_node
+            if receiver_node not in self._node_edge_map:
+                self._node_edge_map[receiver_node] = [edge]
+            else:
+                self._node_edge_map[receiver_node].append(edge)
+
+            return self
+        else:
+            self.nodes.append(node_or_edge)
+            return node_or_edge
 
 
 G = TypeVar("G", bound=Node)
 
 
-class Graph:
+class GraphSyntaxMixin:
     nodes: List[Node]
     edges: List[Tuple[Port, Port]]
 
-    __batching: bool
-    __node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
-    __ports_to_listen: set[Port]
-    __ports_changed: List[Port]
+    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+    _action_pipeline_map: Dict[Action, List[Pipeline]]
 
-    __event_queue: asyncio.Queue[Port]
-    __loop: asyncio.AbstractEventLoop | None = None
+    def add_node(self, node: G) -> G:
+        node.parent_graph = cast(Graph, self)
+        node.__register_ports__()
+        self.nodes.append(node)
+        return node
+
+    def add_pipeline(self, action: Action, pipeline: Pipeline):
+        if action in self._action_pipeline_map:
+            self._action_pipeline_map[action].append(pipeline)
+        else:
+            self._action_pipeline_map[action] = [pipeline]
+
+    def __lshift__(self, node: G) -> G:
+        """To support: g << SomeNode()"""
+        node = self.add_node(node)
+        return node
+
+    def connect(self, left_port: Port, right_port: Port) -> Tuple[Port, Port]:
+        return left_port >> right_port
+
+
+class GraphExecMixin:
+    main_pipeline: Pipeline
+    _event_queue: asyncio.Queue[Port]
+
+    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+    _action_pipeline_map: Dict[Action, List[Pipeline]]
+
+    def _exec_node(self, node: Node):
+        # async with asyncio.TaskGroup() as tg:
+        if node in self._node_edge_map:
+            if self._node_edge_map[node] is not None:
+                for port_a, port_b in self._node_edge_map[node]:
+                    # Flow data between ports
+                    port_b.value = port_a.value
+
+        node.forward()
+
+    def _exec_pipelines(self, action: Action):
+        if action in self._action_pipeline_map:
+            for pipeline in self._action_pipeline_map[action]:
+                pipeline.run()
+
+    def run_main_pipeline(self):
+        self.main_pipeline.run()
+
+    async def wait_forever(self):
+        while True:
+            _ = await self._event_queue.get()
+
+    def wait_forever_as_task(self) -> asyncio.Task:
+        return asyncio.create_task(self.wait_forever())
+
+    def run_in_thread(self) -> Thread:
+        t = Thread(target=self.run_main_pipeline)
+        t.start()
+        return t
+
+
+class Graph(GraphSyntaxMixin, GraphExecMixin):
+    nodes: List[Node]
+    edges: List[Tuple[Port, Port]]
+
+    main_pipeline: Pipeline
+
+    _batching: bool
+    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+    _event_queue: asyncio.Queue[Port]
 
     def __init__(self) -> None:
         self.nodes = []
         self.edges = []
 
+        self.main_pipeline = Pipeline(self)
+
         # Ports we care about
-        self.__node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
-        self.__ports_to_listen: set[Port] = set()
+        self._node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
+        self._action_pipeline_map: Dict[Action, List[Pipeline]] = {}
 
         # For batched (sync) updates
-        self.__batching = False
-        self.__ports_changed = []
+        self._batching = False
 
         # For async/event-driven mode in a dedicated thread
-        self.__event_queue = asyncio.Queue()
-        self.__loop = None
-
-    def add(self, node: G) -> G:
-        node.__register_ports__()
-        self.nodes.append(node)
-        return node
-
-    def connect(self, left_node, right_node) -> None:
-        pass
-
-    def run(self):
-        # async with asyncio.TaskGroup() as tg:
-        for node in self.nodes:
-            if node in self.__node_edge_map:
-                if self.__node_edge_map[node] is not None:
-                    for port_a, port_b in self.__node_edge_map[node]:
-                        # Flow data between ports
-                        port_b.value = port_a.value
-
-            # if inspect.iscoroutinefunction(node.forward):
-            #     tg.create_task(node.forward())
-            # else:
-            node.forward()
-
-    def run_in_thread(self) -> Thread:
-        t = Thread(target=self.run)
-        t.start()
-        return t
-
-    def __lshift__(self, node: G) -> G:
-        self.add(node)
-        return node
-
-    def __ilshift__(self, edge: Tuple[Port, Port]) -> Graph:
-        # Process edges
-        self.edges.append(edge)
-
-        receiver_node = edge[1].parent_node
-        if receiver_node not in self.__node_edge_map:
-            self.__node_edge_map[receiver_node] = [edge]
-        else:
-            self.__node_edge_map[receiver_node].append(edge)
-
-        return self
-
-    def __enter__(self) -> Graph:
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return False
-
-    # class ListenerGraph(Graph):
-    #     def __init__(self) -> None:
-    #         super().__init__()
-
-    def watch(self, port: Port) -> None:
-        port.__graph_to_notify = self
-        self.__ports_to_listen.add(port)
+        self._event_queue = asyncio.Queue()
 
     def on_port_change(self, port: Port) -> None:
         """
         Called from wherever the port is updated. This might be in another thread.
         """
-        if port not in self.__ports_to_listen:
-            return
-
-        if self.__batching:
-            # Sync/batched mode: just collect.
-            self.__ports_changed.append(port)
-            return
-
-        # IMPORTANT: this may be called from another thread
-        loop = self.__loop
-        if loop is not None and loop.is_running():
-            # Schedule the queue put in a thread-safe way
-            loop.call_soon_threadsafe(self.__event_queue.put_nowait, port)
-        else:
-            # Fallback if we somehow don't have a loop yet / same-thread use
-            self.__event_queue.put_nowait(port)
-
-    async def run_and_wait_forever(self) -> None:
-        # Record which loop we are running on
-        self.__loop = asyncio.get_running_loop()
-        while True:
-            _ = await self.__event_queue.get()
-            self.run()
-
-    def run_and_wait_forever_as_task(self) -> asyncio.Task:
-        return asyncio.create_task(self.run_and_wait_forever())
-
-    def update(self) -> ListenerGraphUpdateContext:
-        return ListenerGraphUpdateContext(self)
-
-    # def __ilshift__(self, edge: Tuple[Port, Port]) -> ListenerGraph:
-    #     g = super().__ilshift__(edge)
-    #     return cast(ListenerGraph, g)
-
-
-class ListenerGraphUpdateContext:
-    graph: Graph
-
-    def __init__(self, graph: Graph):
-        self.graph = graph
-        self._prev_batching: bool | None = None
-
-    def __enter__(self):
-        # Save previous batching state so contexts can be nested safely.
-        self._prev_batching = self.graph.__batching
-
-        # Enter batching mode
-        self.graph.__batching = True
-        self.graph.__ports_changed.clear()
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Leave batching mode
-        self.graph.__batching = (
-            self._prev_batching if self._prev_batching is not None else False
-        )
-
-        if self.graph.__ports_changed:
-            # At least one watched port changed while in the context
-            self.graph.run()
-            self.graph.__ports_changed.clear()
-
-        # Do not suppress exceptions
-        return False
-
-
-if __name__ == "__main__":
-    # Define your nodes
-    class ImageLoadingNode(Node):
-        # path: Port[str] = Port(None)
-        i: Port[int] = Port(0)
-        bgr: Port[NDArray] = Port(None)
-
-        def forward(self):
-            # do something with ~self.path
-            x = np.array([3, 2, 1], dtype=np.uint8) + ~self.i
-            x = x.reshape((1, 1, 3))
-            self.bgr <<= x
-
-    class ImageTransformationNode(Node):
-        bgr: Port[NDArray] = Port(None)
-        rgb: Port[NDArray] = Port(None)
-
-        def forward(self):
-            bgr = ~self.bgr
-            rgb = bgr[:, :, [2, 1, 0]]
-            self.rgb <<= rgb
-
-    class PrintNode(Node):
-        field: Port[Any] = Port(None)
-
-        def forward(self):
-            print(~self.field)
-
-    # Define a graph
-    g = Graph()
-    n1 = g << ImageLoadingNode()
-    n2 = g << ImageTransformationNode()
-    g <<= n1.bgr >> n2.bgr
-
-    n3 = g << PrintNode()
-    g <<= n3.field << n2.bgr
-
-    # Now execute
-    for i in range(5):
-        n1.i <<= i
-        g.run()
+        pass

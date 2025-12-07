@@ -1,11 +1,75 @@
 from __future__ import annotations
 
 from threading import Thread
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar, Tuple, Optional, TYPE_CHECKING
 from enum import Enum, auto
 
 from asyncio import create_task, Task
 from typing import Coroutine
+
+
+if TYPE_CHECKING:
+    from ._graph import Pipeline
+    from ._node import Node
+
+
+TP = TypeVar("TP")
+NP = TypeVar("NP")
+
+
+class Port(Generic[TP]):
+    value: Optional[TP]
+    parent_node: Node
+
+    def __init__(self, value: Optional[TP]) -> None:
+        self.value = value
+
+    def __ilshift__(self, value: TP) -> Port[TP]:
+        self.value = value
+        return self
+
+    def __invert__(self) -> TP:
+        assert self.value is not None
+        return self.value
+
+    def __rshift__(self, other: Port[NP]) -> Tuple[Port[TP], Port[NP]]:
+        return (self, other)
+
+    def __lshift__(self, other: Port[NP]) -> Tuple[Port[NP], Port[TP]]:
+        return (other, self)
+
+
+class Action(Generic[TP]):
+    """An Action is a special type of Port that takes in input data and notify
+    the graph to run its parent node."""
+
+    value: Optional[TP]
+    parent_node: Node
+
+    def __init__(self, value: Optional[TP]) -> None:
+        self.value = value
+
+    def __ilshift__(self, value: TP) -> Action[TP]:
+        self.value = value
+        g = self.parent_node.parent_graph
+        g._exec_pipelines(self)
+        return self
+
+    def __invert__(self) -> TP:
+        assert self.value is not None
+        return self.value
+
+    def __rshift__(self, other: Port[NP]) -> Pipeline:
+        """Action >> Port"""
+        from ._graph import Pipeline
+
+        p = Pipeline(self.parent_node.parent_graph)
+        p.add_edge(self, other)
+        self.parent_node.parent_graph.add_pipeline(self, p)
+        return p
+
+    def __lshift__(self, other: Port[NP]):
+        raise ValueError("You may not point an Action port to another port.")
 
 
 T = TypeVar("T")
@@ -38,9 +102,13 @@ class FutureOp(Generic[T]):
         super().__init__()
         self.coroutine = coroutine
 
-    def step(self, start_new: bool = True) -> FutureState:
+    def start(self) -> FutureState:
+        self.task = create_task(self.coroutine())
+        return FutureState.STARTED
+
+    def step(self, restart: bool = True) -> FutureState:
         if self.task is None:
-            if not start_new:
+            if not restart:
                 return FutureState.INITIALIZED
 
             self.task = create_task(self.coroutine())
@@ -50,7 +118,7 @@ class FutureOp(Generic[T]):
         if not self.task.done():
             return FutureState.RUNNING
 
-        # 3) Task is done → classify outcome
+        # 3) Task is done -> classify outcome
         if self.task.cancelled():
             return FutureState.CANCELLED
 

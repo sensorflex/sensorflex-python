@@ -1,11 +1,12 @@
 from ._graph import Graph
-from ._node import Node, Port
-from ._operator import FutureOp, FutureState, ThreadOp, ThreadState
+from ._node import Node
+from ._operator import Port, Action, FutureOp, FutureState, ThreadOp, ThreadState
 
 __all__ = [
     "Graph",
     "Node",
     "Port",
+    "Action",
     "FutureOp",
     "FutureState",
     "ThreadOp",

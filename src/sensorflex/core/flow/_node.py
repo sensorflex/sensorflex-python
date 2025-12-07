@@ -2,76 +2,59 @@
 
 from __future__ import annotations
 
-from typing import (
-    Any,
-    Generic,
-    TypeVar,
-    get_type_hints,
-    get_origin,
-    Tuple,
-    Optional,
-    TYPE_CHECKING,
-)
+from typing import Any, Optional, TYPE_CHECKING
+from ._operator import Port, Action
 
 if TYPE_CHECKING:
     from ._graph import Graph
 
 
-T = TypeVar("T")
-N = TypeVar("N")
-
-
-class Port(Generic[T]):
-    value: Optional[T]
-    parent_node: Node
-
-    __graph_to_notify: Optional[Graph] = None
-
-    def __init__(self, value: Optional[T]) -> None:
-        self.value = value
-
-    def __ilshift__(self, value: T) -> Port[T]:
-        self.value = value
-
-        if self.__graph_to_notify is not None:
-            self.__graph_to_notify.on_port_change(self)
-
-        return self
-
-    def __invert__(self) -> T:
-        assert self.value is not None
-        return self.value
-
-    def __rshift__(self, other: Port[N]) -> Tuple[Port[T], Port[N]]:
-        return (self, other)
-
-    def __lshift__(self, other: Port[N]) -> Tuple[Port[N], Port[T]]:
-        return (other, self)
-
-
 class Node:
     name: str
+    parent_graph: Graph
+
+    _ports: dict[str, Port[Any]]
 
     def __init__(self, name: Optional[str] = None) -> None:
         super().__init__()
         self.name = name if name is not None else self.__class__.__name__
 
     def __register_ports__(self) -> None:
-        self._ports: dict[str, Port[Any]] = {}
+        """
+        Discover all Port[...] attributes for this node instance and
+        attach them to self._ports, setting parent_node on each Port.
+        """
+        self._ports = {}
 
-        hints = get_type_hints(type(self))
+        cls = type(self)
 
-        for name, hint in hints.items():
-            if get_origin(hint) is Port and hasattr(self, name):
-                port_obj = getattr(self, name)
+        # 1) Preferred path: your transform already tells us which attributes
+        #    are "static" (like dataclass fields), including Ports.
+        static_attrs = getattr(cls, "__static_attributes__", None)
 
+        if static_attrs is not None:
+            # static_attrs is something like ('bgr', 'i')
+            for name in static_attrs:
+                port_obj = getattr(self, name, None)
                 if isinstance(port_obj, Port):
                     self._ports[name] = port_obj
                     port_obj.parent_node = self
 
-        # print(hints)
+                if isinstance(port_obj, Action):
+                    port_obj.parent_node = self
 
-    def forward(self):
+            return  # we're done
+
+        # 2) Fallback if there is no __static_attributes__: scan instance attrs
+        for name, value in self.__dict__.items():
+            if isinstance(value, Port):
+                self._ports[name] = value
+                value.parent_node = self
+
+            if isinstance(value, Action):
+                value.parent_node = self
+
+    def forward(self) -> None:
         pass
 
 
