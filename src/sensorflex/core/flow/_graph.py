@@ -48,34 +48,7 @@ class Pipeline:
             node.forward()
 
     def add(self, node_or_edge):
-        self.__or__(node_or_edge)
-
-    @overload
-    def __or__(self, node_or_edge: NP) -> NP: ...
-
-    @overload
-    def __or__(self, node_or_edge: Tuple[Port, Port]) -> Self: ...
-
-    def __or__(self, node_or_edge):
-        if isinstance(node_or_edge, tuple):
-            edge: Tuple[Port, Port] = node_or_edge
-            self.edges.append(edge)
-
-            receiver_node = edge[1].parent_node
-            if receiver_node not in self._node_edge_map:
-                self._node_edge_map[receiver_node] = [edge]
-            else:
-                self._node_edge_map[receiver_node].append(edge)
-
-            return self
-        else:
-            node: Node = node_or_edge
-
-            if node.parent_graph is None:
-                node = self.parent_graph.add_node(node)
-
-            self.nodes.append(node)
-            return node
+        self += node_or_edge
 
     @overload
     def __iadd__(self, node_or_edge: Node) -> Self: ...
