@@ -47,6 +47,9 @@ class Pipeline:
 
             node.forward()
 
+    def add(self, node_or_edge):
+        self.__or__(node_or_edge)
+
     @overload
     def __or__(self, node_or_edge: NP) -> NP: ...
 

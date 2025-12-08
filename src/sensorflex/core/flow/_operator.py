@@ -32,6 +32,9 @@ class Port(Generic[TP]):
         assert self.value is not None
         return self.value
 
+    def to(self, other: Port[NP]) -> Tuple[Port[TP], Port[NP]]:
+        return (self, other)
+
     def __rshift__(self, other: Port[NP]) -> Tuple[Port[TP], Port[NP]]:
         return (self, other)
 
@@ -58,6 +61,9 @@ class Action(Generic[TP]):
     def __invert__(self) -> TP:
         assert self.value is not None
         return self.value
+
+    def to(self, other: Port[NP]) -> Pipeline:
+        return self.__rshift__(other)
 
     def __rshift__(self, other: Port[NP]) -> Pipeline:
         """Action >> Port"""
