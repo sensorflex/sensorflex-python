@@ -91,8 +91,6 @@ def get_graph():
     nw = g << WebSocketServerNode()
     n3 = (_ := nw.message >> n3.field) | n3
 
-    print(g._action_pipeline_map)
-
     return g
 
 
@@ -102,7 +100,6 @@ async def main():
 
     g.run_main_pipeline()
     await asyncio.sleep(15)
-    g.run_main_pipeline()
 
     t.cancel()
 
