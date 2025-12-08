@@ -20,9 +20,12 @@ class PrintNode(Node):
 
 async def main():
     g = Graph()
-    n1 = g << WebSocketServerNode()
-    n2 = g << PrintNode()
-    n2 = (_ := n1.message >> n2.field) | n2
+
+    g += (n1 := WebSocketServerNode())
+    g += (n2 := PrintNode())
+
+    p = n1.message >> n2.field
+    p += n2
 
     await g.wait_forever()
 

@@ -54,8 +54,11 @@ class Action(Generic[TP]):
 
     def __ilshift__(self, value: TP) -> Action[TP]:
         self.value = value
+
         g = self.parent_node.parent_graph
+        assert g is not None
         g.schedule_exec(self)
+
         return self
 
     def __invert__(self) -> TP:
@@ -69,9 +72,13 @@ class Action(Generic[TP]):
         """Action >> Port"""
         from ._graph import Pipeline
 
-        p = Pipeline(self.parent_node.parent_graph)
+        g = self.parent_node.parent_graph
+        assert g is not None
+
+        p = Pipeline(g)
         p.add_edge(self, other)
-        self.parent_node.parent_graph.add_pipeline(self, p)
+        g.add_pipeline(self, p)
+
         return p
 
     def __lshift__(self, other: Port[NP]):

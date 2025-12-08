@@ -80,16 +80,17 @@ class PrintActionNode(Node):
 def get_graph():
     mp = (g := Graph()).main_pipeline
 
-    n1 = mp | g << ImageLoadingNode()
-    n2 = mp | g << ImageTransformationNode()
-    mp = mp | n1.bgr >> n2.bgr
+    mp += (n1 := ImageLoadingNode())
+    mp += (n2 := ImageTransformationNode())
+    mp += n1.bgr >> n2.bgr
 
-    __ = mp | g << WaitNode(1)
-    n3 = mp | g << PrintNode()
-    mp = mp | n3.field << n2.bgr
+    mp += (__ := WaitNode(1))
+    mp += (n3 := PrintNode())
+    mp += n3.field << n2.bgr
 
-    nw = g << WebSocketServerNode()
-    n3 = (_ := nw.message >> n3.field) | n3
+    g += (nw := WebSocketServerNode())
+    wp = nw.message >> n3.field
+    wp += n3
 
     return g
 

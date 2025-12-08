@@ -45,9 +45,9 @@ class PrintNode(Node):
 
 def get_graph():
     mp = (g := Graph()).main_pipeline
-    n1 = mp | g << AsyncStepNode()
-    n2 = mp | g << PrintNode()
-    mp = mp | n1.state >> n2.field
+    mp += (n1 := AsyncStepNode())
+    mp += (n2 := PrintNode())
+    mp += n1.state >> n2.field
 
     return g
 

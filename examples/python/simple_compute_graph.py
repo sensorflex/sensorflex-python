@@ -67,12 +67,14 @@ class PrintNode(Node):
 # Define a graph
 def get_graph(i):
     mp = (g := Graph()).main_pipeline
-    n1 = mp | g << ImageLoadingNode()
-    n2 = mp | g << ImageTransformationNode()
-    mp = mp | n1.bgr >> n2.bgr
-    __ = mp | g << WaitNode(i)
-    n3 = mp | g << PrintNode()
-    mp = mp | n3.field << n2.bgr
+
+    mp += (n1 := ImageLoadingNode())
+    mp += (n2 := ImageTransformationNode())
+    mp += n1.bgr >> n2.bgr
+
+    mp += WaitNode(i)
+    mp += (n3 := PrintNode())
+    mp += n3.field << n2.bgr
 
     return g, n1
 

@@ -69,8 +69,46 @@ class Pipeline:
 
             return self
         else:
-            self.nodes.append(node_or_edge)
-            return node_or_edge
+            node: Node = node_or_edge
+
+            if node.parent_graph is None:
+                node = self.parent_graph.add_node(node)
+
+            self.nodes.append(node)
+            return node
+
+    @overload
+    def __iadd__(self, node_or_edge: Node) -> Self: ...
+
+    @overload
+    def __iadd__(self, node_or_edge: Tuple[Port, Port]) -> Self: ...
+
+    def __iadd__(self, node_or_edge: Node | Tuple[Port, Port]) -> Self:
+        if isinstance(node_or_edge, tuple):
+            edge: Tuple[Port, Port] = node_or_edge
+            self.edges.append(edge)
+
+            receiver_node = edge[1].parent_node
+            if receiver_node not in self._node_edge_map:
+                self._node_edge_map[receiver_node] = [edge]
+            else:
+                self._node_edge_map[receiver_node].append(edge)
+
+        else:
+            node: Node = node_or_edge
+
+            if node.parent_graph is None:
+                node = self.parent_graph.add_node(node)
+
+            self.nodes.append(node)
+
+        return self
+
+    def __add__(self, node: Node) -> Self:
+        if node.parent_graph is None:
+            node = self.parent_graph.add_node(node)
+        self.nodes.append(node)
+        return self
 
 
 G = TypeVar("G", bound=Node)
@@ -83,9 +121,22 @@ class GraphSyntaxMixin:
     _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
     _action_pipeline_map: Dict[Action, List[Pipeline]]
 
+    def _register_ports(self, node: Node) -> bool:
+        for name in dir(node):
+            obj = getattr(node, name)
+
+            if isinstance(obj, Port):
+                node._ports[name] = obj
+                obj.parent_node = node
+
+            if isinstance(obj, Action):
+                obj.parent_node = node
+
+        return True
+
     def add_node(self, node: G) -> G:
         node.parent_graph = cast(Graph, self)
-        node.__register_ports__()
+        self._register_ports(node)
         self.nodes.append(node)
         return node
 
@@ -94,6 +145,10 @@ class GraphSyntaxMixin:
             self._action_pipeline_map[action].append(pipeline)
         else:
             self._action_pipeline_map[action] = [pipeline]
+
+    def __iadd__(self, node: Node) -> Self:
+        self.add_node(node)
+        return self
 
     def __lshift__(self, node: G) -> G:
         """To support: g << SomeNode()"""

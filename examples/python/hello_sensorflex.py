@@ -1,9 +1,10 @@
 """Hello SensorFlex, your first example!"""
 
-from typing import Any
-
+import asyncio
 import numpy as np
 from numpy.typing import NDArray
+from typing import Any
+
 from sensorflex import Node, Port, Graph
 
 
@@ -36,15 +37,16 @@ class PrintNode(Node):
         print(~self.field)
 
 
-def main():
+async def main():
     # Define a graph
     mp = (g := Graph()).main_pipeline
-    n1 = mp | g << ImageLoadingNode()
-    n2 = mp | g << ImageTransformationNode()
-    mp = mp | n1.bgr >> n2.bgr
 
-    n3 = mp | g << PrintNode()
-    mp = mp | n3.field << n2.bgr
+    mp += (n1 := ImageLoadingNode())
+    mp += (n2 := ImageTransformationNode())
+    mp += n1.bgr >> n2.bgr
+
+    mp += (n3 := PrintNode())
+    mp += n3.field << n2.bgr
 
     # Now execute
     for i in range(5):
@@ -53,4 +55,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

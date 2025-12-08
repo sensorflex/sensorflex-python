@@ -42,11 +42,13 @@ class PrintShapeNode(Node):
 def get_graph():
     g = Graph()
 
-    n1 = g << WebcamNode()
-    n2 = g << VFXNode()
-    n2 = (wp := n1.frame >> n2.frame) | n2
-    n3 = wp | g << PrintShapeNode()
-    wp = wp | n2.output >> n3.arr
+    g += (n1 := WebcamNode())
+    g += (n2 := VFXNode())
+
+    p = n1.frame >> n2.frame
+    p += n2
+    p += (n3 := PrintShapeNode())
+    p += n2.output >> n3.arr
 
     return g
 
