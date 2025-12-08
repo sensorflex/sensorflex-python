@@ -4,7 +4,8 @@ import cv2
 import asyncio
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port, WebcamNode
+from sensorflex import Node, Graph, Port
+from sensorflex.library import WebcamNode
 
 
 class VFXNode(Node):
@@ -40,20 +41,19 @@ class PrintShapeNode(Node):
 # Define a graph
 def get_graph():
     g = Graph()
+
     n1 = g << WebcamNode()
     n2 = g << VFXNode()
-    g <<= n1.last_frame >> n2.frame
-    n3 = g << PrintShapeNode()
-    g <<= n2.output >> n3.arr
-
-    g.watch(n1.last_frame)
+    n2 = (wp := n1.frame >> n2.frame) | n2
+    n3 = wp | g << PrintShapeNode()
+    wp = wp | n2.output >> n3.arr
 
     return g
 
 
 async def main():
     g = get_graph()
-    await g.run_and_wait_forever()
+    await g.wait_forever()
 
 
 if __name__ == "__main__":

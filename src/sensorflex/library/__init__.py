@@ -1,3 +1,3 @@
-from .io import WebSocketServerNode
+from .io import WebSocketServerNode, WebcamNode
 
-__all__ = ["WebSocketServerNode"]
+__all__ = ["WebSocketServerNode", "WebcamNode"]

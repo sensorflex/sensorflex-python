@@ -3,7 +3,8 @@
 import asyncio
 from typing import Any
 
-from sensorflex import Graph, Node, Port, WebSocketServer
+from sensorflex import Graph, Node, Port
+from sensorflex.library import WebSocketServerNode
 
 
 class PrintNode(Node):
@@ -19,20 +20,11 @@ class PrintNode(Node):
 
 async def main():
     g = Graph()
-    n1 = g << WebSocketServer()
+    n1 = g << WebSocketServerNode()
     n2 = g << PrintNode()
-    g <<= n1.last_message >> n2.field
+    n2 = (_ := n1.message >> n2.field) | n2
 
-    g.watch(n1.last_message)
-
-    # await g.run_and_wait_forever()
-    # _ = g.run_and_wait_forever()
-    t = g.run_and_wait_forever_as_task()
-
-    for i in range(5):
-        await asyncio.sleep(3)
-
-    t.cancel()
+    await g.wait_forever()
 
 
 if __name__ == "__main__":

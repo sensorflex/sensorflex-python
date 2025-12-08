@@ -6,7 +6,7 @@ import cv2
 from typing import Any
 
 
-from sensorflex.core.flow import Node, Port, ThreadOp
+from sensorflex.core.flow import Node, Port, ThreadOp, Action
 
 
 class WebcamNode(Node):
@@ -16,18 +16,18 @@ class WebcamNode(Node):
     # Output ports
     last_frame: Port[cv2.typing.MatLike]
 
+    frame: Action[cv2.typing.MatLike]
+
     _webcam_top: ThreadOp[None]
 
     def __init__(self, device_index: int = 0, name: str | None = None) -> None:
         super().__init__(name)
 
-        self.last_frame = Port(None)
-
         # Default configuration; can be overridden by the graph
         self.cap = cv2.VideoCapture(device_index)
 
         # Outputs
-        self.last_message = Port({})
+        self.frame = Action(None)
 
         # Internal async machinery
         self._webcam_top: ThreadOp[None] = ThreadOp(self._run_server)
@@ -58,7 +58,8 @@ class WebcamNode(Node):
 
         while True:
             _, frame = self.cap.read()
-            self.last_frame <<= frame
+            # self.last_frame <<= frame
+            self.frame <<= frame
 
     def cancel(self) -> None:
         """Cancel the server task via node API."""

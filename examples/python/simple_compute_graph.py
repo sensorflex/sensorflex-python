@@ -1,6 +1,7 @@
 """A simple compute graph example."""
 
 import time
+import asyncio
 import numpy as np
 from typing import Any
 from numpy.typing import NDArray
@@ -65,13 +66,13 @@ class PrintNode(Node):
 
 # Define a graph
 def get_graph(i):
-    g = Graph()
-    n1 = g << ImageLoadingNode()
-    n2 = g << ImageTransformationNode()
-    g <<= n1.bgr >> n2.bgr
-    __ = g << WaitNode(i)
-    n3 = g << PrintNode()
-    g <<= n3.field << n2.bgr
+    mp = (g := Graph()).main_pipeline
+    n1 = mp | g << ImageLoadingNode()
+    n2 = mp | g << ImageTransformationNode()
+    mp = mp | n1.bgr >> n2.bgr
+    __ = mp | g << WaitNode(i)
+    n3 = mp | g << PrintNode()
+    mp = mp | n3.field << n2.bgr
 
     return g, n1
 
@@ -82,10 +83,10 @@ def run_sync():
     for i in range(5):
         g, n1 = get_graph(i)
         n1.i <<= i
-        g.run()
+        g.run_main_pipeline()
 
 
-def run_in_thread():
+async def run_in_thread():
     threads = []
 
     # Now execute
@@ -100,4 +101,4 @@ def run_in_thread():
 
 
 if __name__ == "__main__":
-    run_in_thread()
+    asyncio.run(run_in_thread())

@@ -108,6 +108,8 @@ class GraphExecMixin:
     _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
     _action_pipeline_map: Dict[Action, List[Pipeline]]
 
+    _loop: asyncio.AbstractEventLoop
+
     def _exec_node(self, node: Node):
         # async with asyncio.TaskGroup() as tg:
         if node in self._node_edge_map:
@@ -123,8 +125,14 @@ class GraphExecMixin:
             for pipeline in self._action_pipeline_map[action]:
                 pipeline.run()
 
+    def schedule_exec(self, action: Action):
+        self._loop.call_soon_threadsafe(self._exec_pipelines, action)
+
     def run_main_pipeline(self):
-        self.main_pipeline.run()
+        def _exec():
+            self.main_pipeline.run()
+
+        self._loop.call_soon_threadsafe(_exec)
 
     async def wait_forever(self):
         while True:
@@ -147,6 +155,8 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
 
     _batching: bool
     _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+
+    _loop: asyncio.AbstractEventLoop
     _event_queue: asyncio.Queue[Port]
 
     def __init__(self) -> None:
@@ -163,6 +173,7 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
         self._batching = False
 
         # For async/event-driven mode in a dedicated thread
+        self._loop = asyncio.get_event_loop()
         self._event_queue = asyncio.Queue()
 
     def on_port_change(self, port: Port) -> None:

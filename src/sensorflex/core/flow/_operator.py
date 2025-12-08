@@ -52,7 +52,7 @@ class Action(Generic[TP]):
     def __ilshift__(self, value: TP) -> Action[TP]:
         self.value = value
         g = self.parent_node.parent_graph
-        g._exec_pipelines(self)
+        g.schedule_exec(self)
         return self
 
     def __invert__(self) -> TP:

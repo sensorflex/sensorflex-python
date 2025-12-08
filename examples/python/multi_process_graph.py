@@ -1,6 +1,7 @@
 """A simple compute graph example."""
 
 import time
+import asyncio
 import numpy as np
 import multiprocessing as mp
 from typing import Any
@@ -65,27 +66,31 @@ class PrintNode(Node):
 
 
 def get_graph(i):
-    g = Graph()
+    mp = (g := Graph()).main_pipeline
 
-    n1 = g << ImageLoadingNode()
+    n1 = mp | g << ImageLoadingNode()
 
-    n2 = g << ImageTransformationNode()
-    g <<= n1.bgr >> n2.bgr
+    n2 = mp | g << ImageTransformationNode()
+    mp = mp | n1.bgr >> n2.bgr
 
-    __ = g << WaitNode(i)
+    __ = mp | g << WaitNode(i)
 
-    n3 = g << PrintNode()
-    g <<= n3.field << n2.bgr
+    n3 = mp | g << PrintNode()
+    mp = mp | n3.field << n2.bgr
 
     return g, n1
 
 
-def run(i: int):
+async def run(i: int):
     g, n1 = get_graph(i)
     n1.i <<= i
-    g.run()
+    g.run_main_pipeline()
+
+
+def worker(i: int):
+    asyncio.run(run(i))
 
 
 if __name__ == "__main__":
     p = mp.Pool(5)
-    p.map(run, range(5))
+    p.map(worker, range(5))

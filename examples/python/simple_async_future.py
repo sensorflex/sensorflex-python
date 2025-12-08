@@ -44,10 +44,10 @@ class PrintNode(Node):
 
 
 def get_graph():
-    g = Graph()
-    n1 = g << AsyncStepNode()
-    n2 = g << PrintNode()
-    g <<= n1.state >> n2.field
+    mp = (g := Graph()).main_pipeline
+    n1 = mp | g << AsyncStepNode()
+    n2 = mp | g << PrintNode()
+    mp = mp | n1.state >> n2.field
 
     return g
 
@@ -56,7 +56,7 @@ async def main():
     g = get_graph()
 
     for _ in range(8):
-        g.run()
+        g.run_main_pipeline()
         await sleep(1)
 
 
