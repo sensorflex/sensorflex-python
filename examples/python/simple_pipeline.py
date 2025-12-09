@@ -89,7 +89,8 @@ def get_graph():
     mp += n3.field << n2.bgr
 
     g += (nw := WebSocketServerNode())
-    wp = nw.message >> n3.field
+    wp = nw.message.event_pipeline
+    wp += nw.message >> n3.field
     wp += n3
 
     return g

@@ -54,11 +54,11 @@ class Pipeline:
     def __iadd__(self, node_or_edge: Node) -> Self: ...
 
     @overload
-    def __iadd__(self, node_or_edge: Tuple[Port, Port]) -> Self: ...
+    def __iadd__(self, node_or_edge: Tuple[Port | Event, Port]) -> Self: ...
 
-    def __iadd__(self, node_or_edge: Node | Tuple[Port, Port]) -> Self:
+    def __iadd__(self, node_or_edge: Node | Tuple[Port | Event, Port]) -> Self:
         if isinstance(node_or_edge, tuple):
-            edge: Tuple[Port, Port] = node_or_edge
+            edge: Tuple[Port | Event, Port] = node_or_edge
             self.edges.append(edge)
 
             receiver_node = edge[1].parent_node

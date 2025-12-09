@@ -5,7 +5,7 @@ import asyncio
 from numpy.typing import NDArray
 
 from sensorflex import Node, Graph, Port
-from sensorflex.library import WebcamNode
+from sensorflex.library.cv import WebcamNode
 
 
 class VFXNode(Node):
@@ -43,10 +43,11 @@ def get_graph():
     g = Graph()
 
     g += (n1 := WebcamNode())
-    g += (n2 := VFXNode())
+    p = n1.frame.event_pipeline
 
-    p = n1.frame >> n2.frame
-    p += n2
+    p += (n2 := VFXNode())
+    p += n1.frame >> n2.frame
+
     p += (n3 := PrintShapeNode())
     p += n2.output >> n3.arr
 

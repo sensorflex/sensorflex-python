@@ -51,9 +51,20 @@ class Event(Generic[TP]):
 
     __func_to_bind: Callable | None
 
-    def __init__(self, value: Optional[TP], func_to_bind: Callable | None = None) -> None:
+    def __init__(
+        self, value: Optional[TP], func_to_bind: Callable | None = None
+    ) -> None:
         self.value = value
         self.__func_to_bind = func_to_bind
+
+    @property
+    def event_pipeline(self):
+        from ._graph import Pipeline
+
+        g = self.parent_node.parent_graph
+        assert g is not None
+
+        return Pipeline(g)
 
     def __ilshift__(self, value: TP) -> Event[TP]:
         self.value = value
@@ -71,25 +82,15 @@ class Event(Generic[TP]):
         assert self.value is not None
         return self.value
 
-    def to(self, other: Port[NP]) -> Pipeline:
+    def to(self, other: Port[NP]) -> Tuple[Event[TP], Port[NP]]:
         return self.__rshift__(other)
 
-    def __rshift__(self, other: Port[NP]) -> Pipeline:
+    def __rshift__(self, other: Port[NP]) -> Tuple[Event[TP], Port[NP]]:
         """Event >> Port"""
-        from ._graph import Pipeline
-
-        g = self.parent_node.parent_graph
-        assert g is not None
-
-        p = Pipeline(g)
-        p.add_edge(self, other)
-        g.add_pipeline(self, p)
-
-        return p
+        return (self, other)
 
     def __lshift__(self, other: Port[NP]):
         raise ValueError("You may not point an Event port to another port.")
-
 
 
 T = TypeVar("T")
