@@ -696,6 +696,7 @@ files = [
 
 [package.dependencies]
 cryptography = ">=45.0.7,<47"
+typing-extensions = {version = ">=4.9", markers = "python_version < \"3.13\" and python_version >= \"3.8\""}
 
 [package.extras]
 docs = ["sphinx (!=5.2.0,!=5.2.0.post0,!=7.2.5)", "sphinx_rtd_theme"]
@@ -733,7 +734,7 @@ name = "sensorflex"
 version = "0.1.0"
 description = "SensorFlex Python client"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["main"]
 files = []
 develop = true
@@ -842,5 +843,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.14"
-content-hash = "dddabee1c8cbe4288f2c920bbb1ab5ed2e2c9e4c12854025beab3c63d4a1d117"
+python-versions = ">=3.11"
+content-hash = "8fac5367b44b98dda4174039308d86c6a7c8dd6cc986fc51de30932d571b62bd"

@@ -5,7 +5,7 @@ license = { file = "LICENSE" }
 description = "SensorFlex Python client"
 authors = [{ name = "Yiqin Zhao", email = "yzigm@rit.edu" }]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "aiortc (>=1.14.0,<2.0.0)",
     "websockets (>=15.0.1,<16.0.0)",
