@@ -16,7 +16,7 @@ from aiortc import (
 from av import VideoFrame
 import websockets
 
-from sensorflex.core._types import (
+from sensorflex.library.web._types import (
     BaseVideoTrackHandler,
     BaseDataChannelHandler,
 )

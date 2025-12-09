@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from threading import Thread
-from typing import Any, Callable, Generic, TypeVar, Tuple, Optional, TYPE_CHECKING
+from typing import Any, Dict, Callable, Generic, TypeVar, Tuple, Optional, TYPE_CHECKING
 from enum import Enum, auto
 
 from asyncio import create_task, Task
@@ -42,22 +42,28 @@ class Port(Generic[TP]):
         return (other, self)
 
 
-class Action(Generic[TP]):
-    """An Action is a special type of Port that takes in input data and notify
+class Event(Generic[TP]):
+    """An Event is a special type of Port that takes in input data and notify
     the graph to run its parent node."""
 
     value: Optional[TP]
     parent_node: Node
 
-    def __init__(self, value: Optional[TP]) -> None:
-        self.value = value
+    __func_to_bind: Callable | None
 
-    def __ilshift__(self, value: TP) -> Action[TP]:
+    def __init__(self, value: Optional[TP], func_to_bind: Callable | None = None) -> None:
+        self.value = value
+        self.__func_to_bind = func_to_bind
+
+    def __ilshift__(self, value: TP) -> Event[TP]:
         self.value = value
 
         g = self.parent_node.parent_graph
         assert g is not None
         g.schedule_exec(self)
+
+        if self.__func_to_bind is not None:
+            self.__func_to_bind()
 
         return self
 
@@ -69,7 +75,7 @@ class Action(Generic[TP]):
         return self.__rshift__(other)
 
     def __rshift__(self, other: Port[NP]) -> Pipeline:
-        """Action >> Port"""
+        """Event >> Port"""
         from ._graph import Pipeline
 
         g = self.parent_node.parent_graph
@@ -82,7 +88,8 @@ class Action(Generic[TP]):
         return p
 
     def __lshift__(self, other: Port[NP]):
-        raise ValueError("You may not point an Action port to another port.")
+        raise ValueError("You may not point an Event port to another port.")
+
 
 
 T = TypeVar("T")

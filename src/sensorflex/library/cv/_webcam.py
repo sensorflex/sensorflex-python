@@ -6,7 +6,7 @@ import cv2
 from typing import Any
 
 
-from sensorflex.core.flow import Node, Port, ThreadOp, Action
+from sensorflex.core.flow import Node, Port, ThreadOp, Event
 
 
 class WebcamNode(Node):
@@ -16,7 +16,7 @@ class WebcamNode(Node):
     # Output ports
     last_frame: Port[cv2.typing.MatLike]
 
-    frame: Action[cv2.typing.MatLike]
+    frame: Event[cv2.typing.MatLike]
 
     _webcam_top: ThreadOp[None]
 
@@ -27,7 +27,7 @@ class WebcamNode(Node):
         self.cap = cv2.VideoCapture(device_index)
 
         # Outputs
-        self.frame = Action(None)
+        self.frame = Event(None)
 
         # Internal async machinery
         self._webcam_top: ThreadOp[None] = ThreadOp(self._run_server)

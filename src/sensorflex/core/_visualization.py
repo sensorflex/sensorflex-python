@@ -12,7 +12,7 @@ import io
 
 from sensorflex.utils.logging import get_logger
 
-from sensorflex.core._types import (
+from sensorflex.library.web._types import (
     BaseVideoTrackHandler,
     BaseChunkedDataChannelHandler,
     BaseChunkedDataHeader,

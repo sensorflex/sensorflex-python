@@ -7,7 +7,7 @@ from threading import Thread
 from typing import TypeVar, Tuple, List, Dict, Self, overload, cast
 
 from ._node import Node
-from ._operator import Port, Action
+from ._operator import Port, Event
 
 NP = TypeVar("NP", bound=Node)
 
@@ -16,10 +16,10 @@ class Pipeline:
     """A pipeline is a part of graph that describes the execution order of nodes."""
 
     nodes: List[Node]
-    edges: List[Tuple[Port | Action, Port]]
+    edges: List[Tuple[Port | Event, Port]]
     parent_graph: Graph
 
-    _node_edge_map: Dict[Node, List[Tuple[Port | Action, Port]]]
+    _node_edge_map: Dict[Node, List[Tuple[Port | Event, Port]]]
 
     def __init__(self, parent_graph: Graph) -> None:
         self.nodes = []
@@ -27,7 +27,7 @@ class Pipeline:
         self._node_edge_map = {}
         self.parent_graph = parent_graph
 
-    def add_edge(self, edge_from: Action | Port, edge_to: Port):
+    def add_edge(self, edge_from: Event | Port, edge_to: Port):
         t = (edge_from, edge_to)
         self.edges.append(t)
 
@@ -92,7 +92,7 @@ class GraphSyntaxMixin:
     edges: List[Tuple[Port, Port]]
 
     _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
-    _action_pipeline_map: Dict[Action, List[Pipeline]]
+    _action_pipeline_map: Dict[Event, List[Pipeline]]
 
     def _register_ports(self, node: Node) -> bool:
         for name in dir(node):
@@ -102,7 +102,7 @@ class GraphSyntaxMixin:
                 node._ports[name] = obj
                 obj.parent_node = node
 
-            if isinstance(obj, Action):
+            if isinstance(obj, Event):
                 obj.parent_node = node
 
         return True
@@ -113,7 +113,7 @@ class GraphSyntaxMixin:
         self.nodes.append(node)
         return node
 
-    def add_pipeline(self, action: Action, pipeline: Pipeline):
+    def add_pipeline(self, action: Event, pipeline: Pipeline):
         if action in self._action_pipeline_map:
             self._action_pipeline_map[action].append(pipeline)
         else:
@@ -137,7 +137,7 @@ class GraphExecMixin:
     _event_queue: asyncio.Queue[Port]
 
     _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
-    _action_pipeline_map: Dict[Action, List[Pipeline]]
+    _action_pipeline_map: Dict[Event, List[Pipeline]]
 
     _loop: asyncio.AbstractEventLoop
 
@@ -151,12 +151,12 @@ class GraphExecMixin:
 
         node.forward()
 
-    def _exec_pipelines(self, action: Action):
+    def _exec_pipelines(self, action: Event):
         if action in self._action_pipeline_map:
             for pipeline in self._action_pipeline_map[action]:
                 pipeline.run()
 
-    def schedule_exec(self, action: Action):
+    def schedule_exec(self, action: Event):
         self._loop.call_soon_threadsafe(self._exec_pipelines, action)
 
     def run_main_pipeline(self):
@@ -198,7 +198,7 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
 
         # Ports we care about
         self._node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
-        self._action_pipeline_map: Dict[Action, List[Pipeline]] = {}
+        self._action_pipeline_map: Dict[Event, List[Pipeline]] = {}
 
         # For batched (sync) updates
         self._batching = False
@@ -206,9 +206,3 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
         # For async/event-driven mode in a dedicated thread
         self._loop = asyncio.get_event_loop()
         self._event_queue = asyncio.Queue()
-
-    def on_port_change(self, port: Port) -> None:
-        """
-        Called from wherever the port is updated. This might be in another thread.
-        """
-        pass

@@ -15,7 +15,7 @@ from typing import Any, Callable, Awaitable, Dict, cast
 
 import websockets
 
-from sensorflex.core.flow import Node, Port, Action, FutureOp, FutureState
+from sensorflex.core.flow import Node, Port, Event, FutureOp, FutureState
 from sensorflex.utils.logging import get_logger
 
 LOGGER = get_logger("_service")
@@ -29,7 +29,7 @@ class WebSocketServerNode(Node):
     # Output ports
     last_message: Port[dict[str, Any]]
 
-    message: Action[dict[str, Any]]
+    message: Event[dict[str, Any]]
 
     _server_op: FutureOp[None]
 
@@ -44,7 +44,7 @@ class WebSocketServerNode(Node):
 
         # Outputs
         self.last_message = Port({})
-        self.message = Action({})
+        self.message = Event({})
 
         # Internal async machinery
         self._server_op: FutureOp[None] = FutureOp(self._run_server)

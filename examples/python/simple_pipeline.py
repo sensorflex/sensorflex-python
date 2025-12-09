@@ -6,8 +6,8 @@ import numpy as np
 from typing import Any
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port, Action
-from sensorflex.library import WebSocketServerNode
+from sensorflex import Node, Graph, Port, Event
+from sensorflex.library.web import WebSocketServerNode
 
 
 # Define your nodes
@@ -65,14 +65,14 @@ class PrintNode(Node):
         print(~self.field)
 
 
-class PrintActionNode(Node):
-    field: Action[Any]
+class PrintEventNode(Node):
+    field: Event[Any]
 
     def __init__(self, name: str | None = None) -> None:
         super().__init__(name)
-        self.field = Action(None)
+        self.field = Event(None, self.on_field_change)
 
-    def forward(self):
+    def on_field_change(self):
         print(~self.field)
 
 
