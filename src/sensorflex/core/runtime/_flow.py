@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from threading import Thread
-from typing import Any, Dict, Callable, Generic, TypeVar, Tuple, Optional, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    Callable,
+    Generic,
+    TypeVar,
+    Tuple,
+    Optional,
+    TYPE_CHECKING,
+    Protocol,
+    Self,
+    List,
+)
 from enum import Enum, auto
 
 from asyncio import create_task, Task
@@ -12,85 +25,66 @@ if TYPE_CHECKING:
     from ._graph import Pipeline
     from ._node import Node
 
-
 TP = TypeVar("TP")
 NP = TypeVar("NP")
+
+
+@dataclass
+class Edge:
+    src: Port
+    dst: Port
 
 
 class Port(Generic[TP]):
     value: Optional[TP]
     parent_node: Node
 
-    def __init__(self, value: Optional[TP]) -> None:
+    on_change: Callable | List[Callable] | None
+
+    def __init__(
+        self, value: Optional[TP], on_change: Callable | List[Callable] | None = None
+    ) -> None:
         self.value = value
+        self.on_change = on_change
 
     def __ilshift__(self, value: TP) -> Port[TP]:
+        """port <<= value: set values of a port."""
         self.value = value
+
+        g = self.parent_node.parent_graph
+        assert g is not None
+        g._on_port_change(self)
+
         return self
 
     def __invert__(self) -> TP:
+        """~port: get values from a port."""
         assert self.value is not None
         return self.value
 
-    def to(self, other: Port[NP]) -> Tuple[Port[TP], Port[NP]]:
-        return (self, other)
-
-    def __rshift__(self, other: Port[NP]) -> Tuple[Port[TP], Port[NP]]:
-        return (self, other)
-
-    def __lshift__(self, other: Port[NP]) -> Tuple[Port[NP], Port[TP]]:
-        return (other, self)
-
-
-class Event(Generic[TP]):
-    """An Event is a special type of Port that takes in input data and notify
-    the graph to run its parent node."""
-
-    value: Optional[TP]
-    parent_node: Node
-
-    __func_to_bind: Callable | None
-
-    def __init__(
-        self, value: Optional[TP], func_to_bind: Callable | None = None
-    ) -> None:
-        self.value = value
-        self.__func_to_bind = func_to_bind
-
-    @property
-    def event_pipeline(self):
+    def get_branched_pipeline(self) -> Pipeline:
         from ._graph import Pipeline
 
         g = self.parent_node.parent_graph
         assert g is not None
+        p = Pipeline(g)
+        p += self.parent_node
 
-        return Pipeline(g)
+        g.add_pipeline(self, p)
 
-    def __ilshift__(self, value: TP) -> Event[TP]:
-        self.value = value
+        return p
 
-        g = self.parent_node.parent_graph
-        assert g is not None
-        g.schedule_exec(self)
+    def __pos__(self):
+        return self.get_branched_pipeline()
 
-        if self.__func_to_bind is not None:
-            self.__func_to_bind()
+    def connect(self, other: Port[NP]) -> Edge:
+        return Edge(self, other)
 
-        return self
+    def __rshift__(self, other: Port[NP]) -> Edge:
+        return self.connect(other)
 
-    def __invert__(self) -> TP:
-        assert self.value is not None
-        return self.value
-
-    def to(self, other: Port[NP]) -> Tuple[Event[TP], Port[NP]]:
-        return self.__rshift__(other)
-
-    def __rshift__(self, other: Port[NP]) -> Tuple[Event[TP], Port[NP]]:
-        """Event >> Port"""
-        return (self, other)
-
-    def __lshift__(self, other: Port[NP]):
-        raise ValueError("You may not point an Event port to another port.")
+    def __lshift__(self, other: Port[NP]) -> Edge:
+        return other.connect(self)
 
 
 T = TypeVar("T")

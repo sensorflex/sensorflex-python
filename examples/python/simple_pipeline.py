@@ -6,7 +6,7 @@ import numpy as np
 from typing import Any
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port, Event
+from sensorflex import Node, Graph, Port
 from sensorflex.library.web import WebSocketServerNode
 
 
@@ -66,11 +66,11 @@ class PrintNode(Node):
 
 
 class PrintEventNode(Node):
-    field: Event[Any]
+    field: Port[Any]
 
     def __init__(self, name: str | None = None) -> None:
         super().__init__(name)
-        self.field = Event(None, self.on_field_change)
+        self.field = Port(None)
 
     def on_field_change(self):
         print(~self.field)
@@ -89,9 +89,10 @@ def get_graph():
     mp += n3.field << n2.bgr
 
     g += (nw := WebSocketServerNode())
-    wp = nw.message.event_pipeline
-    wp += nw.message >> n3.field
+    wp = +nw.message_received
+    wp += nw.message_received >> nw.message_to_send
     wp += n3
+    wp += nw.message_received >> n3.field
 
     return g
 
@@ -100,8 +101,8 @@ async def main():
     g = get_graph()
     t = g.wait_forever_as_task()
 
-    g.run_main_pipeline()
     await asyncio.sleep(15)
+    g.run_main_pipeline()
 
     t.cancel()
 

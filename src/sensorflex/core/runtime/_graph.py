@@ -3,23 +3,44 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from threading import Thread
-from typing import TypeVar, Tuple, List, Dict, Self, overload, cast
+from typing import TypeVar, List, Dict, Self, overload, cast, Awaitable
 
 from ._node import Node
-from ._operator import Port, Event
+from ._flow import Edge, Port
 
 NP = TypeVar("NP", bound=Node)
+
+
+def _call_func(bind) -> None:
+    if bind is None:
+        return
+
+    # Case 1: bind is already a coroutine object
+    if inspect.iscoroutine(bind):
+        loop = asyncio.get_running_loop()
+        loop.create_task(bind)
+        return
+
+    # Case 2: bind is a function: call it
+    result = bind()
+
+    # Case 3: result is an awaitable (async func)
+    if inspect.isawaitable(result):
+        assert result is Awaitable
+        loop = asyncio.get_running_loop()
+        loop.create_task(result)
 
 
 class Pipeline:
     """A pipeline is a part of graph that describes the execution order of nodes."""
 
     nodes: List[Node]
-    edges: List[Tuple[Port | Event, Port]]
+    edges: List[Edge]
     parent_graph: Graph
 
-    _node_edge_map: Dict[Node, List[Tuple[Port | Event, Port]]]
+    _node_edge_map: Dict[Node, List[Edge]]
 
     def __init__(self, parent_graph: Graph) -> None:
         self.nodes = []
@@ -27,8 +48,8 @@ class Pipeline:
         self._node_edge_map = {}
         self.parent_graph = parent_graph
 
-    def add_edge(self, edge_from: Event | Port, edge_to: Port):
-        t = (edge_from, edge_to)
+    def add_edge(self, edge_from: Port, edge_to: Port):
+        t = Edge(edge_from, edge_to)
         self.edges.append(t)
 
         if edge_to.parent_node in self._node_edge_map:
@@ -38,12 +59,11 @@ class Pipeline:
 
     def run(self):
         for node in self.nodes:
-            # async with asyncio.TaskGroup() as tg:
-            if node in self._node_edge_map:
-                if self._node_edge_map[node] is not None:
-                    for port_a, port_b in self._node_edge_map[node]:
-                        # Flow data between ports
-                        port_b.value = port_a.value
+            if edges := self._node_edge_map.get(node):
+                for edge in edges:
+                    # Flow data between ports
+                    edge.dst.value = edge.src.value
+                    self.parent_graph._on_port_change(edge.dst, by_sensorflex=True)
 
             node.forward()
 
@@ -54,14 +74,15 @@ class Pipeline:
     def __iadd__(self, node_or_edge: Node) -> Self: ...
 
     @overload
-    def __iadd__(self, node_or_edge: Tuple[Port | Event, Port]) -> Self: ...
+    def __iadd__(self, node_or_edge: Edge) -> Self: ...
 
-    def __iadd__(self, node_or_edge: Node | Tuple[Port | Event, Port]) -> Self:
-        if isinstance(node_or_edge, tuple):
-            edge: Tuple[Port | Event, Port] = node_or_edge
+    def __iadd__(self, node_or_edge: Node | Edge) -> Self:
+        if isinstance(node_or_edge, Edge):
+            edge: Edge = node_or_edge
             self.edges.append(edge)
 
-            receiver_node = edge[1].parent_node
+            receiver_node = edge.dst.parent_node
+
             if receiver_node not in self._node_edge_map:
                 self._node_edge_map[receiver_node] = [edge]
             else:
@@ -89,10 +110,9 @@ G = TypeVar("G", bound=Node)
 
 class GraphSyntaxMixin:
     nodes: List[Node]
-    edges: List[Tuple[Port, Port]]
+    edges: List[Edge]
 
-    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
-    _action_pipeline_map: Dict[Event, List[Pipeline]]
+    _port_pipeline_map: Dict[Port, List[Pipeline]]
 
     def _register_ports(self, node: Node) -> bool:
         for name in dir(node):
@@ -100,9 +120,6 @@ class GraphSyntaxMixin:
 
             if isinstance(obj, Port):
                 node._ports[name] = obj
-                obj.parent_node = node
-
-            if isinstance(obj, Event):
                 obj.parent_node = node
 
         return True
@@ -113,11 +130,11 @@ class GraphSyntaxMixin:
         self.nodes.append(node)
         return node
 
-    def add_pipeline(self, action: Event, pipeline: Pipeline):
-        if action in self._action_pipeline_map:
-            self._action_pipeline_map[action].append(pipeline)
+    def add_pipeline(self, port: Port, pipeline: Pipeline):
+        if port in self._port_pipeline_map:
+            self._port_pipeline_map[port].append(pipeline)
         else:
-            self._action_pipeline_map[action] = [pipeline]
+            self._port_pipeline_map[port] = [pipeline]
 
     def __iadd__(self, node: Node) -> Self:
         self.add_node(node)
@@ -128,7 +145,7 @@ class GraphSyntaxMixin:
         node = self.add_node(node)
         return node
 
-    def connect(self, left_port: Port, right_port: Port) -> Tuple[Port, Port]:
+    def connect(self, left_port: Port, right_port: Port) -> Edge:
         return left_port >> right_port
 
 
@@ -136,28 +153,39 @@ class GraphExecMixin:
     main_pipeline: Pipeline
     _event_queue: asyncio.Queue[Port]
 
-    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
-    _action_pipeline_map: Dict[Event, List[Pipeline]]
+    _node_edge_map: Dict[Node, List[Edge]]
+    _port_pipeline_map: Dict[Port, List[Pipeline]]
 
     _loop: asyncio.AbstractEventLoop
+
+    def _on_port_change(self, port: Port, by_sensorflex: bool = False):
+        if port in self._port_pipeline_map:
+            self.schedule_exec(port)
+
+        if by_sensorflex:
+            if port.on_change is not None:
+                if isinstance(port.on_change, list):
+                    for func in port.on_change:
+                        _call_func(func)
+                else:
+                    _call_func(port.on_change())
 
     def _exec_node(self, node: Node):
         # async with asyncio.TaskGroup() as tg:
         if node in self._node_edge_map:
             if self._node_edge_map[node] is not None:
-                for port_a, port_b in self._node_edge_map[node]:
+                for edge in self._node_edge_map[node]:
                     # Flow data between ports
-                    port_b.value = port_a.value
+                    edge.dst.value = edge.src.value
 
         node.forward()
 
-    def _exec_pipelines(self, action: Event):
-        if action in self._action_pipeline_map:
-            for pipeline in self._action_pipeline_map[action]:
-                pipeline.run()
+    def _exec_pipelines(self, port: Port):
+        for pipeline in self._port_pipeline_map[port]:
+            pipeline.run()
 
-    def schedule_exec(self, action: Event):
-        self._loop.call_soon_threadsafe(self._exec_pipelines, action)
+    def schedule_exec(self, port: Port):
+        self._loop.call_soon_threadsafe(self._exec_pipelines, port)
 
     def run_main_pipeline(self):
         def _exec():
@@ -180,12 +208,12 @@ class GraphExecMixin:
 
 class Graph(GraphSyntaxMixin, GraphExecMixin):
     nodes: List[Node]
-    edges: List[Tuple[Port, Port]]
+    edges: List[Edge]
 
     main_pipeline: Pipeline
 
     _batching: bool
-    _node_edge_map: Dict[Node, List[Tuple[Port, Port]]]
+    _node_edge_map: Dict[Node, List[Edge]]
 
     _loop: asyncio.AbstractEventLoop
     _event_queue: asyncio.Queue[Port]
@@ -197,8 +225,8 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
         self.main_pipeline = Pipeline(self)
 
         # Ports we care about
-        self._node_edge_map: Dict[Node, List[Tuple[Port, Port]]] = {}
-        self._action_pipeline_map: Dict[Event, List[Pipeline]] = {}
+        self._node_edge_map: Dict[Node, List[Edge]] = {}
+        self._port_pipeline_map: Dict[Port, List[Pipeline]] = {}
 
         # For batched (sync) updates
         self._batching = False

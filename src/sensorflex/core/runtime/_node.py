@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ._operator import Port
+    from ._flow import Port
     from ._graph import Graph
 
 

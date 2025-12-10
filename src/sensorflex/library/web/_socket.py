@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import asyncio
 import websockets
+from websockets import ConnectionClosed
+from websockets.asyncio.server import ServerConnection
 
 from typing import Any
 
-from sensorflex.core.flow import Node, Port, Event, FutureOp, FutureState
+from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
 
 
 class WebSocketServerNode(Node):
@@ -17,14 +19,16 @@ class WebSocketServerNode(Node):
     port: int
 
     # Output ports
-    last_message: Port[dict[str, Any]]
-
-    message: Event[dict[str, Any]]
+    message_received: Port[dict[str, Any]]
+    message_to_send: Port[dict[str, Any]]
 
     _server_op: FutureOp[None]
 
     def __init__(
-        self, host: str = "0.0.0.0", port: int = 8765, name: str | None = None
+        self,
+        host: str = "0.0.0.0",
+        port: int = 8765,
+        name: str | None = None,
     ) -> None:
         super().__init__(name)
 
@@ -32,16 +36,16 @@ class WebSocketServerNode(Node):
         self.host = host
         self.port = port
 
-        # Outputs
-        self.last_message = Port({})
-        self.message = Event({})
+        # Ports
+        self.message_received = Port({})
+        self.message_to_send = Port({}, self.broadcast)
 
         # Internal async machinery
         self._server_op: FutureOp[None] = FutureOp(self._run_server)
         _ = self._server_op.start()
 
         # Track connected clients (ServerConnection objects in websockets ≥ 12)
-        self._clients: set[Any] = set()
+        self._clients: set[ServerConnection] = set()
 
     def forward(self) -> None:
         """
@@ -55,7 +59,7 @@ class WebSocketServerNode(Node):
             case FutureState.COMPLETED | FutureState.FAILED | FutureState.CANCELLED:
                 self._server_op.reset()
 
-    async def _handler(self, conn: Any) -> None:
+    async def _handler(self, conn: ServerConnection) -> None:
         """
         websockets ≥ 12 handler signature: (connection) -> Awaitable[None]
         """
@@ -68,8 +72,7 @@ class WebSocketServerNode(Node):
                     msg = {"type": "raw", "data": raw_msg}
 
                 # This triggers graph_to_notify.on_port_change(...)
-                self.last_message <<= msg
-                self.message <<= msg  # Invoke a new pipeline
+                self.message_received <<= msg  # Invoke a new pipeline
         finally:
             self._clients.discard(conn)
 
@@ -87,14 +90,22 @@ class WebSocketServerNode(Node):
             # Stay alive forever; FutureOp.cancel() will cancel the task
             await asyncio.Future()
 
-    # Optional: async broadcast helper, if you ever call it from inside the loop
-    async def broadcast(self, message: dict[str, Any]) -> None:
+    async def broadcast(self):
         if not self._clients:
             return
 
+        message = ~self.message_to_send
         raw = json.dumps(message)
+
+        async def _send_one(conn: ServerConnection):
+            try:
+                await conn.send(raw)
+            except ConnectionClosed:
+                self._clients.discard(conn)
+
+        conns = list(self._clients)
         await asyncio.gather(
-            *[conn.send(raw) for conn in list(self._clients) if not conn.closed],
+            *(_send_one(c) for c in conns),
             return_exceptions=True,
         )
 

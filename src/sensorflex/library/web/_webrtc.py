@@ -15,7 +15,7 @@ from typing import Any, Callable, Awaitable, Dict, cast
 
 import websockets
 
-from sensorflex.core.flow import Node, Port, Event, FutureOp, FutureState
+from sensorflex.core.runtime import Node, Port, Event, FutureOp, FutureState
 from sensorflex.utils.logging import get_logger
 
 LOGGER = get_logger("_service")

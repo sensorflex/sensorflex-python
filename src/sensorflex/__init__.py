@@ -6,11 +6,10 @@
 #     BaseDataChannelHandler,
 #     BaseChunkedDataChannelHandler,
 # )
-from .core.flow import (
+from .core.runtime import (
     Node,
     Graph,
     Port,
-    Event,
     FutureOp,
     FutureState,
     ThreadOp,
@@ -21,7 +20,6 @@ __all__ = [
     "Node",
     "Port",
     "Graph",
-    "Event",
     "FutureOp",
     "FutureState",
     "ThreadOp",

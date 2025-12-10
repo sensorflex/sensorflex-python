@@ -6,7 +6,7 @@ import cv2
 from typing import Any
 
 
-from sensorflex.core.flow import Node, Port, ThreadOp, Event
+from sensorflex.core.runtime import Node, Port, ThreadOp, Event
 
 
 class WebcamNode(Node):
