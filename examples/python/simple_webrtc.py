@@ -53,13 +53,18 @@ async def main():
     g += (n1 := WebSocketServerNode())
     g += (n2 := PrintNode())
 
+    # You may use +some_port to branch out a pipeline from a port.
+    # Whenever the port gets new data, this pipeline will run.
     p_rtc = +n1.o_message
     p_rtc += (n_rtc := WebRTCSessionNode())
     p_rtc += n1.o_message >> n_rtc.i_message
 
     p_msg = +n_rtc.o_message
     p_msg += n1 + (n_rtc.o_message >> n1.i_message)
-    p_msg += n2 + (n_rtc.o_message >> n2.field)
+
+    # You can get multiple branched pipeline from a single port.
+    p_prt = +n_rtc.o_message
+    p_prt += n2 + (n_rtc.o_message >> n2.field)
 
     p_data = +n_rtc.o_data
     p_data += n2 + (n_rtc.o_data >> n2.field)
@@ -68,7 +73,6 @@ async def main():
     p_frame += (n_vfx := VFXNode())
     p_frame += n_rtc.o_frame >> n_vfx.i_frame
     p_frame += n_rtc + (n_vfx.o_frame >> n_rtc.i_frame)
-
     p_frame += (n_vis := RerunVideoVisNode())
     p_frame += n_vfx.o_frame >> n_vis.i_frame
 
