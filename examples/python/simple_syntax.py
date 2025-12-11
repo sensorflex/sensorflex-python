@@ -21,11 +21,11 @@ class PrintNode(Node):
 async def main():
     g = Graph()
     n1 = g.add_node(WebSocketServerNode())
-    wp = n1.message.event_pipeline
+    wp = n1.o_message.get_branched_pipeline()
 
     n2 = PrintNode()
     wp.add(n2)
-    wp.add(n1.message.to(n2.field))
+    wp.add(n1.o_message.connect(n2.field))
     wp.add(n2)
 
     await g.wait_forever()

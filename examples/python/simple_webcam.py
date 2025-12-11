@@ -43,7 +43,7 @@ def get_graph():
     g = Graph()
 
     g += (n1 := WebcamNode())
-    p = n1.frame.event_pipeline
+    p = +n1.frame
 
     p += (n2 := VFXNode())
     p += n1.frame >> n2.frame
