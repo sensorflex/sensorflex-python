@@ -2,16 +2,16 @@
 
 import logging
 
-ROOT_LOGGER_NAME = "sensorflex"
+ROOT_LOGGER_NAME = "SensorFlex"
 
 
 def get_logger(subsystem: str | None = None) -> logging.Logger:
     """
-    Get a logger under the 'sensorflex' namespace.
+    Get a logger under the 'SensorFlex' namespace.
     Examples:
-        get_logger()                -> 'sensorflex'
-        get_logger("webrtc")        -> 'sensorflex.webrtc'
-        get_logger("handlers.png")  -> 'sensorflex.handlers.png'
+        get_logger()                -> 'SensorFlex'
+        get_logger("webrtc")        -> 'SensorFlex.webrtc'
+        get_logger("handlers.png")  -> 'SensorFlex.handlers.png'
     """
     if subsystem:
         name = f"{ROOT_LOGGER_NAME}.{subsystem}"

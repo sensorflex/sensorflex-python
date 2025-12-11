@@ -6,8 +6,11 @@ import numpy as np
 from av import VideoFrame
 
 from sensorflex import Graph, Node, Port
-from sensorflex.library.visualization import init_rerun_context, RerunVideoVisNode
 from sensorflex.library.web import WebSocketServerNode, WebRTCSessionNode
+from sensorflex.library.visualization import init_rerun_context, RerunVideoVisNode
+from sensorflex.utils.logging import configure_default_logging
+
+configure_default_logging()
 
 
 class PrintNode(Node):
@@ -50,26 +53,21 @@ async def main():
     g += (n1 := WebSocketServerNode())
     g += (n2 := PrintNode())
 
-    p = +n1.o_message
-
-    p += (n_rtc := WebRTCSessionNode())
-    p += n1.o_message >> n_rtc.i_message
+    p_rtc = +n1.o_message
+    p_rtc += (n_rtc := WebRTCSessionNode())
+    p_rtc += n1.o_message >> n_rtc.i_message
 
     p_msg = +n_rtc.o_message
-    p_msg += n1
-    p_msg += n_rtc.o_message >> n1.i_message
-    p_msg += n2
-    p_msg += n_rtc.o_message >> n2.field
+    p_msg += n1 + (n_rtc.o_message >> n1.i_message)
+    p_msg += n2 + (n_rtc.o_message >> n2.field)
 
     p_data = +n_rtc.o_data
-    p_data += n2
-    p_data += n_rtc.o_data >> n2.field
+    p_data += n2 + (n_rtc.o_data >> n2.field)
 
-    g += (n_vfx := VFXNode())
     p_frame = +n_rtc.o_frame
-    p_frame += n_vfx
+    p_frame += (n_vfx := VFXNode())
     p_frame += n_rtc.o_frame >> n_vfx.i_frame
-    p_frame += n_vfx.o_frame >> n_rtc.i_frame
+    p_frame += n_rtc + (n_vfx.o_frame >> n_rtc.i_frame)
 
     p_frame += (n_vis := RerunVideoVisNode())
     p_frame += n_vfx.o_frame >> n_vis.i_frame

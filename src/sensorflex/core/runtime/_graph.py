@@ -9,6 +9,9 @@ from typing import TypeVar, List, Dict, Self, overload, cast, Awaitable
 
 from ._node import Node
 from ._flow import Edge, Port
+from sensorflex.utils.logging import get_logger
+
+logger = get_logger("Graph")
 
 NP = TypeVar("NP", bound=Node)
 
@@ -48,14 +51,25 @@ class Pipeline:
         self._node_edge_map = {}
         self.parent_graph = parent_graph
 
-    def add_edge(self, edge_from: Port, edge_to: Port):
-        t = Edge(edge_from, edge_to)
-        self.edges.append(t)
+    def add_edge(self, edge: Edge):
+        if (
+            not edge.src._is_branched_pipeline_head
+            and edge.src.parent_node not in self.nodes
+        ):
+            logger.warning(
+                f"Adding an edge from a node that is not part of the pipeline. From: {edge.src.parent_node.name}, To: {edge.dst.parent_node.name}"
+            )
+        if edge.dst.parent_node not in self.nodes:
+            logger.warning(
+                f"Adding an edge to a node that is not part of the pipeline. From: {edge.src.parent_node.name}, To: {edge.dst.parent_node.name}"
+            )
 
-        if edge_to.parent_node in self._node_edge_map:
-            self._node_edge_map[edge_to.parent_node].append(t)
+        self.edges.append(edge)
+
+        if edge.dst.parent_node in self._node_edge_map:
+            self._node_edge_map[edge.dst.parent_node].append(edge)
         else:
-            self._node_edge_map[edge_to.parent_node] = [t]
+            self._node_edge_map[edge.dst.parent_node] = [edge]
 
     def run(self):
         for node in self.nodes:
@@ -71,30 +85,28 @@ class Pipeline:
         self += node_or_edge
 
     @overload
-    def __iadd__(self, node_or_edge: Node) -> Self: ...
+    def __iadd__(self, items: Node) -> Self: ...
 
     @overload
-    def __iadd__(self, node_or_edge: Edge) -> Self: ...
+    def __iadd__(self, items: Edge) -> Self: ...
 
-    def __iadd__(self, node_or_edge: Node | Edge) -> Self:
-        if isinstance(node_or_edge, Edge):
-            edge: Edge = node_or_edge
-            self.edges.append(edge)
+    @overload
+    def __iadd__(self, items: List[Node | Edge]) -> Self: ...
 
-            receiver_node = edge.dst.parent_node
-
-            if receiver_node not in self._node_edge_map:
-                self._node_edge_map[receiver_node] = [edge]
-            else:
-                self._node_edge_map[receiver_node].append(edge)
-
-        else:
-            node: Node = node_or_edge
+    def __iadd__(self, items: Node | Edge | List[Node | Edge]) -> Self:
+        if isinstance(items, Edge):
+            edge: Edge = items
+            self.add_edge(edge)
+        elif isinstance(items, Node):
+            node: Node = items
 
             if node.parent_graph is None:
                 node = self.parent_graph.add_node(node)
 
             self.nodes.append(node)
+        elif isinstance(items, list):
+            for v in items:
+                self += v
 
         return self
 

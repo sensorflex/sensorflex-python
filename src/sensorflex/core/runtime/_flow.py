@@ -34,6 +34,12 @@ class Edge:
     src: Port
     dst: Port
 
+    def __add__(self, items: Node | Edge | List[Node | Edge]) -> List[Node | Edge]:
+        if isinstance(items, list):
+            return [self, *items]
+        else:
+            return [self, items]
+
 
 class Port(Generic[TP]):
     value: Optional[TP]
@@ -41,11 +47,14 @@ class Port(Generic[TP]):
 
     on_change: Callable | List[Callable] | None
 
+    _is_branched_pipeline_head: bool
+
     def __init__(
         self, value: Optional[TP], on_change: Callable | List[Callable] | None = None
     ) -> None:
         self.value = value
         self.on_change = on_change
+        self._is_branched_pipeline_head = False
 
     def __ilshift__(self, value: TP) -> Port[TP]:
         """port <<= value: set values of a port."""
@@ -68,9 +77,12 @@ class Port(Generic[TP]):
         g = self.parent_node.parent_graph
         assert g is not None
         p = Pipeline(g)
-        p += self.parent_node
 
+        # The self node should not be automatically added to the pipeline.
+        # p += self.parent_node
         g.add_pipeline(self, p)
+
+        self._is_branched_pipeline_head = True
 
         return p
 

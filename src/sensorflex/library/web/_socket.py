@@ -75,10 +75,6 @@ class WebSocketServerNode(Node):
         """
 
         async with serve(self._handle_client, self.host, self.port) as server:
-            print(
-                f"[{self.name}] WebRTC signaling server at ws://{self.host}:{self.port}"
-            )
-            # Stay alive forever; FutureOp.cancel() will cancel the task
             await server.serve_forever()
 
     async def _handle_client(self, conn: ServerConnection) -> None:

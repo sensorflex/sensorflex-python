@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ._flow import Port
+    from ._flow import Port, Edge
     from ._graph import Graph
 
 
@@ -23,6 +23,13 @@ class Node:
 
     def forward(self) -> None:
         pass
+
+    def __add__(self, items: Node | Edge | List[Node | Edge]) -> List[Node | Edge]:
+        if isinstance(items, list):
+            return [self, *items]
+        else:
+            return [self, items]
+
 
 
 class IntegratedNode:
