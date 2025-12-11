@@ -89,10 +89,10 @@ def get_graph():
     mp += n3.field << n2.bgr
 
     g += (nw := WebSocketServerNode())
-    wp = +nw.message_received
-    wp += nw.message_received >> nw.message_to_send
+    wp = +nw.o_message
+    wp += nw.o_message >> nw.i_message
     wp += n3
-    wp += nw.message_received >> n3.field
+    wp += nw.o_message >> n3.field
 
     return g
 

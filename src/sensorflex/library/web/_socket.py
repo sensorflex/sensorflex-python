@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
-import asyncio
-import websockets
-from websockets import ConnectionClosed
+from uuid import uuid4, UUID
+from dataclasses import dataclass
+from websockets import serve
 from websockets.asyncio.server import ServerConnection
 
-from typing import Any
+from typing import Dict, Any
 
 from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
+
+
+@dataclass
+class WebSocketMessage:
+    client_id: UUID
+    payload: Dict[str, Any]
 
 
 class WebSocketServerNode(Node):
@@ -19,10 +25,12 @@ class WebSocketServerNode(Node):
     port: int
 
     # Output ports
-    message_received: Port[dict[str, Any]]
-    message_to_send: Port[dict[str, Any]]
+    i_message: Port[WebSocketMessage]
+    o_message: Port[WebSocketMessage]
 
+    # Internal states
     _server_op: FutureOp[None]
+    _clients: Dict[UUID, ServerConnection]
 
     def __init__(
         self,
@@ -37,15 +45,15 @@ class WebSocketServerNode(Node):
         self.port = port
 
         # Ports
-        self.message_received = Port({})
-        self.message_to_send = Port({}, self.broadcast)
+        self.i_message = Port(None, self._send_message)
+        self.o_message = Port(None)
 
         # Internal async machinery
         self._server_op: FutureOp[None] = FutureOp(self._run_server)
         _ = self._server_op.start()
 
         # Track connected clients (ServerConnection objects in websockets ≥ 12)
-        self._clients: set[ServerConnection] = set()
+        self._clients = {}
 
     def forward(self) -> None:
         """
@@ -59,11 +67,27 @@ class WebSocketServerNode(Node):
             case FutureState.COMPLETED | FutureState.FAILED | FutureState.CANCELLED:
                 self._server_op.reset()
 
-    async def _handler(self, conn: ServerConnection) -> None:
+    async def _run_server(self) -> None:
+        """
+        Coroutine run by FutureOp.
+
+        Starts a WebSocket server and keeps it alive until cancelled.
+        """
+
+        async with serve(self._handle_client, self.host, self.port) as server:
+            print(
+                f"[{self.name}] WebRTC signaling server at ws://{self.host}:{self.port}"
+            )
+            # Stay alive forever; FutureOp.cancel() will cancel the task
+            await server.serve_forever()
+
+    async def _handle_client(self, conn: ServerConnection) -> None:
         """
         websockets ≥ 12 handler signature: (connection) -> Awaitable[None]
         """
-        self._clients.add(conn)
+        new_conn_id = uuid4()
+        self._clients[new_conn_id] = conn
+
         try:
             async for raw_msg in conn:
                 try:
@@ -72,42 +96,18 @@ class WebSocketServerNode(Node):
                     msg = {"type": "raw", "data": raw_msg}
 
                 # This triggers graph_to_notify.on_port_change(...)
-                self.message_received <<= msg  # Invoke a new pipeline
+                self.o_message <<= WebSocketMessage(new_conn_id, msg)
         finally:
-            self._clients.discard(conn)
+            del self._clients[new_conn_id]
 
-    async def _run_server(self) -> None:
-        """
-        Coroutine run by FutureOp.
+    async def _send_message(self):
+        msg = ~self.i_message
 
-        Starts a WebSocket server and keeps it alive until cancelled.
-        """
-
-        async with websockets.serve(self._handler, self.host, self.port):
-            print(
-                f"[{self.name}] WebRTC signaling server at ws://{self.host}:{self.port}"
-            )
-            # Stay alive forever; FutureOp.cancel() will cancel the task
-            await asyncio.Future()
-
-    async def broadcast(self):
-        if not self._clients:
-            return
-
-        message = ~self.message_to_send
-        raw = json.dumps(message)
-
-        async def _send_one(conn: ServerConnection):
-            try:
-                await conn.send(raw)
-            except ConnectionClosed:
-                self._clients.discard(conn)
-
-        conns = list(self._clients)
-        await asyncio.gather(
-            *(_send_one(c) for c in conns),
-            return_exceptions=True,
-        )
+        if msg.client_id in self._clients:
+            conn = self._clients[msg.client_id]
+            await conn.send(json.dumps(msg.payload))
+        else:
+            print(f"Connection closed for {msg.client_id}")
 
     def cancel(self) -> None:
         """Cancel the server task via node API."""

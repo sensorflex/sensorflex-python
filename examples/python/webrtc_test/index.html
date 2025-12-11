@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>WebRTC Test Client</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 1rem;
+        }
+
+        video {
+            width: 320px;
+            height: 240px;
+            background: #000;
+            margin-right: 1rem;
+        }
+
+        #log {
+            white-space: pre-wrap;
+            background: #f4f4f4;
+            padding: 0.5rem;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+        }
+
+        button {
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>WebRTC Test Client</h1>
+
+    <label>
+        Signaling URL:
+        <input id="signalingUrl" size="40" value="ws://localhost:8765" />
+    </label>
+    <br /><br />
+
+    <button id="connectBtn">Connect & Start</button>
+    <button id="sendBtn" disabled>Send test message</button>
+
+    <h2>Local / Remote Video</h2>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <h2>Log</h2>
+    <div id="log"></div>
+
+    <script>
+        // --- Config -------------------------------------------------------------
+        let SIGNALING_URL = document.getElementById("signalingUrl").value;
+
+        // --- Globals ------------------------------------------------------------
+        let pc = null;
+        let ws = null;
+        let dataChannel = null;
+        let pingInterval = null;
+
+        const logEl = document.getElementById("log");
+        const connectBtn = document.getElementById("connectBtn");
+        const sendBtn = document.getElementById("sendBtn");
+        const localVideo = document.getElementById("localVideo");
+        const remoteVideo = document.getElementById("remoteVideo");
+
+        function log(...args) {
+            const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+            console.log("[LOG]", msg);
+            logEl.textContent += msg + "\n";
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // --- WebRTC setup -------------------------------------------------------
+        async function createPeerConnection() {
+            pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: "stun:stun.l.google.com:19302" }, // tweak as needed
+                ],
+            });
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const msg = {
+                        type: "candidate",
+                        candidate: event.candidate,
+                    };
+                    log("Send candidate:", msg);
+                    ws.send(JSON.stringify(msg));
+                }
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                log("ICE state:", pc.iceConnectionState);
+            };
+
+            pc.ontrack = (event) => {
+                log("Received remote track:", event.track.kind);
+                // Use the first stream
+                if (!remoteVideo.srcObject) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            pc.ondatachannel = (event) => {
+                log("Received data channel:", event.channel.label);
+                setupDataChannel(event.channel, false);
+            };
+
+            // Create our own data channel to test sending
+            dataChannel = pc.createDataChannel("test");
+            setupDataChannel(dataChannel, true);
+
+            // Add local camera as a video track
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false,
+            });
+            localVideo.srcObject = stream;
+            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+            log("Local media tracks added");
+        }
+
+        function setupDataChannel(channel, isLocal) {
+            channel.onopen = () => {
+                log(`DataChannel "${channel.label}" open (local=${isLocal})`);
+                sendBtn.disabled = false;
+
+                if (isLocal) {
+                    // Periodic ping to test reliability
+                    pingInterval = setInterval(() => {
+                        const msg = `ping @ ${new Date().toISOString()}`;
+                        log('DC send:', msg);
+                        channel.send(msg);
+                    }, 3000);
+                }
+            };
+
+            channel.onmessage = (event) => {
+                log(`DataChannel "${channel.label}" message:`, event.data);
+            };
+
+            channel.onclose = () => {
+                log(`DataChannel "${channel.label}" closed`);
+                sendBtn.disabled = true;
+                if (pingInterval) {
+                    clearInterval(pingInterval);
+                    pingInterval = null;
+                }
+            };
+
+            channel.onerror = (err) => {
+                log(`DataChannel "${channel.label}" error:`, err);
+            };
+        }
+
+        // --- Signaling over WebSocket ------------------------------------------
+        async function start() {
+            SIGNALING_URL = document.getElementById("signalingUrl").value;
+            log("Connecting to signaling server:", SIGNALING_URL);
+
+            ws = new WebSocket(SIGNALING_URL);
+
+            ws.onopen = async () => {
+                log("WebSocket connected");
+                await createPeerConnection();
+
+                // Create and send offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const msg = {
+                    type: "offer",
+                    sdp: pc.localDescription.sdp,
+                };
+                log("Send offer");
+                ws.send(JSON.stringify(msg));
+            };
+
+            ws.onmessage = async (event) => {
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    log("Non-JSON message from signaling:", event.data);
+                    return;
+                }
+
+                log("Signaling message:", data.type || "unknown", data);
+
+                if (data.type === "answer") {
+                    const desc = new RTCSessionDescription({
+                        type: "answer",
+                        sdp: data.sdp,
+                    });
+                    await pc.setRemoteDescription(desc);
+                    log("Remote description set (answer)");
+                } else if (data.type === "candidate" && data.candidate) {
+                    try {
+                        await pc.addIceCandidate(data.candidate);
+                        log("Remote ICE candidate added");
+                    } catch (e) {
+                        log("Failed to add candidate:", e);
+                    }
+                } else {
+                    log("Unknown signaling message type:", data.type);
+                }
+            };
+
+            ws.onclose = () => {
+                log("WebSocket closed");
+            };
+
+            ws.onerror = (err) => {
+                log("WebSocket error:", err);
+            };
+        }
+
+        connectBtn.onclick = () => {
+            connectBtn.disabled = true;
+            start().catch((err) => {
+                log("Error starting:", err);
+                connectBtn.disabled = false;
+            });
+        };
+
+        sendBtn.onclick = () => {
+            const msg = `manual test @ ${new Date().toISOString()}`;
+            if (dataChannel && dataChannel.readyState === "open") {
+                log("DC manual send:", msg);
+                dataChannel.send(msg);
+            } else {
+                log("Data channel not open");
+            }
+        };
+    </script>
+</body>
+
+</html>
