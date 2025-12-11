@@ -6,6 +6,7 @@ import numpy as np
 from av import VideoFrame
 
 from sensorflex import Graph, Node, Port
+from sensorflex.library.visualization import init_rerun_context, RerunVideoVisNode
 from sensorflex.library.web import WebSocketServerNode, WebRTCSessionNode
 
 
@@ -66,13 +67,16 @@ async def main():
 
     g += (n_vfx := VFXNode())
     p_frame = +n_rtc.o_frame
-    # p_frame += n_rtc.o_frame >> n_rtc.i_frame
     p_frame += n_vfx
     p_frame += n_rtc.o_frame >> n_vfx.i_frame
     p_frame += n_vfx.o_frame >> n_rtc.i_frame
+
+    p_frame += (n_vis := RerunVideoVisNode())
+    p_frame += n_vfx.o_frame >> n_vis.i_frame
 
     await g.wait_forever()
 
 
 if __name__ == "__main__":
+    init_rerun_context("WebRTC")
     asyncio.run(main())

@@ -35,15 +35,20 @@ class EchoVideoTrack(VideoStreamTrack):
         self._queue = frame_queue
 
     async def recv(self) -> VideoFrame:
-        # Wait for the next frame pushed into the queue
+        # Get *at least* one frame
         frame = await self._queue.get()
 
-        # You can either reuse original pts/time_base or re-timestamp.
-        # Here we re-timestamp to keep things simple.
-        # pts, time_base = await self.next_timestamp()
-        # frame = frame.reformat()  # ensure it is writable / appropriate format
-        # frame.pts = pts
-        # frame.time_base = time_base
+        # Drain the queue so we always keep the most recent frame
+        while not self._queue.empty():
+            try:
+                frame = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+        # Re-timestamp to keep aiortc happy
+        pts, time_base = await self.next_timestamp()
+        frame.pts = pts
+        frame.time_base = time_base
         return frame
 
 
@@ -88,7 +93,7 @@ class WebRTCSessionNode(Node):
         self._video_tasks: set[asyncio.Task] = set()
         self._channels = {}
 
-        self._frame_queue = asyncio.Queue[VideoFrame]()
+        self._frame_queue = asyncio.Queue[VideoFrame](maxsize=1)
         self._test_track = EchoVideoTrack(self._frame_queue)
         self.pc.addTrack(self._test_track)
 
@@ -232,7 +237,18 @@ class WebRTCSessionNode(Node):
 
     async def send_frame(self):
         frame = ~self.i_frame
-        await self._frame_queue.put(frame)
+        if frame is None:
+            return
+
+        # Always keep only the latest frame in the queue
+        try:
+            if self._frame_queue.full():
+                _ = self._frame_queue.get_nowait()  # drop the stale frame
+
+            self._frame_queue.put_nowait(frame)
+        except asyncio.QueueFull:
+            # If we somehow still get here, just drop this frame
+            pass
 
     async def close(self) -> None:
         LOGGER.info("Closing RTCPeerConnection")
