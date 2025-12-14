@@ -50,14 +50,18 @@ class VFXNode(Node):
 async def main():
     g = Graph()
 
-    g += (n1 := WebSocketServerNode())
-    g += (n2 := PrintNode())
+    g += (
+        (n1 := WebSocketServerNode())
+        + (n2 := PrintNode())
+        + (n_rtc := WebRTCSessionNode())
+        + (n_vfx := VFXNode())
+        + (n_vis := RerunVideoVisNode())
+    )
 
     # You may use +some_port to branch out a pipeline from a port.
     # Whenever the port gets new data, this pipeline will run.
     p_rtc = +n1.o_message
-    p_rtc += (n_rtc := WebRTCSessionNode())
-    p_rtc += n1.o_message >> n_rtc.i_message
+    p_rtc += n_rtc + (n1.o_message >> n_rtc.i_message)
 
     p_msg = +n_rtc.o_message
     p_msg += n1 + (n_rtc.o_message >> n1.i_message)
@@ -70,11 +74,9 @@ async def main():
     p_data += n2 + (n_rtc.o_data >> n2.field)
 
     p_frame = +n_rtc.o_frame
-    p_frame += (n_vfx := VFXNode())
-    p_frame += n_rtc.o_frame >> n_vfx.i_frame
+    p_frame += n_vfx + (n_rtc.o_frame >> n_vfx.i_frame)
     p_frame += n_rtc + (n_vfx.o_frame >> n_rtc.i_frame)
-    p_frame += (n_vis := RerunVideoVisNode())
-    p_frame += n_vfx.o_frame >> n_vis.i_frame
+    p_frame += n_vis + (n_vfx.o_frame >> n_vis.i_frame)
 
     await g.wait_forever()
 
