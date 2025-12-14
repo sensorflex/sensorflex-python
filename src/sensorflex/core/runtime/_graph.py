@@ -43,13 +43,15 @@ class Pipeline:
     edges: List[Edge]
     parent_graph: Graph
 
+    _from_node: Node | None
     _node_edge_map: Dict[Node, List[Edge]]
 
-    def __init__(self, parent_graph: Graph) -> None:
+    def __init__(self, parent_graph: Graph, from_node: Node | None = None) -> None:
         self.nodes = []
         self.edges = []
         self._node_edge_map = {}
         self.parent_graph = parent_graph
+        self._from_node = from_node
 
     def add_edge(self, edge: Edge):
         if (
@@ -66,20 +68,26 @@ class Pipeline:
 
         self.edges.append(edge)
 
-        if edge.dst.parent_node in self._node_edge_map:
-            self._node_edge_map[edge.dst.parent_node].append(edge)
+        parent_node = edge.src.parent_node
+        if parent_node in self._node_edge_map:
+            self._node_edge_map[parent_node].append(edge)
         else:
-            self._node_edge_map[edge.dst.parent_node] = [edge]
+            self._node_edge_map[parent_node] = [edge]
 
     def run(self):
-        for node in self.nodes:
-            if edges := self._node_edge_map.get(node):
-                for edge in edges:
-                    # Flow data between ports
-                    edge.dst.value = edge.src.value
-                    self.parent_graph._on_port_change(edge.dst, by_sensorflex=True)
+        if self._from_node:
+            self.push_data_for_node(self._from_node)
 
+        for node in self.nodes:
             node.forward()
+            self.push_data_for_node(node)
+
+    def push_data_for_node(self, node: Node):
+        if edges := self._node_edge_map.get(node):
+            for edge in edges:
+                # Flow data between ports
+                edge.dst.value = edge.src.value
+                self.parent_graph._on_port_change(edge.dst, by_sensorflex=True)
 
     def add(self, node_or_edge):
         self += node_or_edge
@@ -181,16 +189,6 @@ class GraphExecMixin:
                         _call_func(func)
                 else:
                     _call_func(port.on_change())
-
-    def _exec_node(self, node: Node):
-        # async with asyncio.TaskGroup() as tg:
-        if node in self._node_edge_map:
-            if self._node_edge_map[node] is not None:
-                for edge in self._node_edge_map[node]:
-                    # Flow data between ports
-                    edge.dst.value = edge.src.value
-
-        node.forward()
 
     def _exec_pipelines(self, port: Port):
         for pipeline in self._port_pipeline_map[port]:

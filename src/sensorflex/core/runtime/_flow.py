@@ -62,7 +62,7 @@ class Port(Generic[TP]):
 
         g = self.parent_node.parent_graph
         assert g is not None
-        g._on_port_change(self)
+        g._on_port_change(self, True)
 
         return self
 
@@ -76,7 +76,7 @@ class Port(Generic[TP]):
 
         g = self.parent_node.parent_graph
         assert g is not None
-        p = Pipeline(g)
+        p = Pipeline(g, self.parent_node)
 
         # The self node should not be automatically added to the pipeline.
         # p += self.parent_node

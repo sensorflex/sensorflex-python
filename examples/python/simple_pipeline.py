@@ -8,6 +8,9 @@ from numpy.typing import NDArray
 
 from sensorflex import Node, Graph, Port
 from sensorflex.library.web import WebSocketServerNode
+from sensorflex.utils.logging import configure_default_logging
+
+configure_default_logging()
 
 
 # Define your nodes
@@ -91,8 +94,7 @@ def get_graph():
     g += (nw := WebSocketServerNode())
     wp = +nw.o_message
     wp += nw.o_message >> nw.i_message
-    wp += n3
-    wp += nw.o_message >> n3.field
+    wp += n3 + (nw.o_message >> n3.field)
 
     return g
 

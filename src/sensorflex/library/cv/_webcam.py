@@ -6,17 +6,14 @@ import cv2
 from typing import Any
 
 
-from sensorflex.core.runtime import Node, Port, ThreadOp, Event
+from sensorflex.core.runtime import Node, Port, ThreadOp
 
 
 class WebcamNode(Node):
     # Configuration ports
     cap: cv2.VideoCapture
 
-    # Output ports
-    last_frame: Port[cv2.typing.MatLike]
-
-    frame: Event[cv2.typing.MatLike]
+    o_frame: Port[cv2.typing.MatLike]
 
     _webcam_top: ThreadOp[None]
 
@@ -27,7 +24,7 @@ class WebcamNode(Node):
         self.cap = cv2.VideoCapture(device_index)
 
         # Outputs
-        self.frame = Event(None)
+        self.o_frame = Port(None)
 
         # Internal async machinery
         self._webcam_top: ThreadOp[None] = ThreadOp(self._run_server)
@@ -58,8 +55,7 @@ class WebcamNode(Node):
 
         while True:
             _, frame = self.cap.read()
-            # self.last_frame <<= frame
-            self.frame <<= frame
+            self.o_frame <<= frame
 
     def cancel(self) -> None:
         """Cancel the server task via node API."""
