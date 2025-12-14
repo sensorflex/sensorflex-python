@@ -4,16 +4,13 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import (
     Any,
-    Dict,
     Callable,
     Generic,
     TypeVar,
-    Tuple,
     Optional,
     TYPE_CHECKING,
-    Protocol,
-    Self,
     List,
+    Iterator,
 )
 from enum import Enum, auto
 
@@ -29,16 +26,32 @@ TP = TypeVar("TP")
 NP = TypeVar("NP")
 
 
+class GraphPartGroup:
+    _parts: List[Node | Edge]
+
+    def __init__(self, parts: List[Node | Edge]) -> None:
+        self._parts = parts
+
+    def __iter__(self) -> Iterator[Node | Edge]:
+        return iter(self._parts)
+
+    def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
+        if isinstance(items, GraphPartGroup):
+            return GraphPartGroup(self._parts + items._parts)
+        else:
+            return GraphPartGroup(self._parts + [items])
+
+
 @dataclass
 class Edge:
     src: Port
     dst: Port
 
-    def __add__(self, items: Node | Edge | List[Node | Edge]) -> List[Node | Edge]:
-        if isinstance(items, list):
-            return [self, *items]
+    def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
+        if isinstance(items, GraphPartGroup):
+            return self + items
         else:
-            return [self, items]
+            return GraphPartGroup([self, items])
 
 
 class Port(Generic[TP]):

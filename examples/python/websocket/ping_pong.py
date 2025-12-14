@@ -44,16 +44,22 @@ class DelayNode(Node):
 
 def get_graph():
     g = Graph()
+    g += (
+        (s_node := WebSocketServerNode())
+        + (p_node := PrintNode())
+        + (c_node := WebSocketClientNode())
+        + (d_node := DelayNode())
+    )
 
-    g += (s_node := WebSocketServerNode())
-    ps = +s_node.o_message
-    ps += (c_node := WebSocketClientNode())
-    ps += (p_node := PrintNode())
-    ps += s_node.o_message >> p_node.field
-
-    ps += (d_node := DelayNode())
-    ps += s_node.o_message >> d_node.i_value
-    ps += d_node.o_value >> c_node.i_message
+    p = +s_node.o_message
+    p += (
+        p_node
+        + (s_node.o_message >> p_node.field)
+        + d_node
+        + (s_node.o_message >> d_node.i_value)
+        + c_node
+        + (d_node.o_value >> c_node.i_message)
+    )
 
     return g, c_node
 

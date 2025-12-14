@@ -8,7 +8,7 @@ from threading import Thread
 from typing import TypeVar, List, Dict, Self, overload, cast, Awaitable
 
 from ._node import Node
-from ._flow import Edge, Port
+from ._flow import Edge, Port, GraphPartGroup
 from sensorflex.utils.logging import get_logger
 
 logger = get_logger("Graph")
@@ -99,9 +99,9 @@ class Pipeline:
     def __iadd__(self, items: Edge) -> Self: ...
 
     @overload
-    def __iadd__(self, items: List[Node | Edge]) -> Self: ...
+    def __iadd__(self, items: GraphPartGroup) -> Self: ...
 
-    def __iadd__(self, items: Node | Edge | List[Node | Edge]) -> Self:
+    def __iadd__(self, items: Node | Edge | GraphPartGroup) -> Self:
         if isinstance(items, Edge):
             edge: Edge = items
             self.add_edge(edge)
@@ -112,16 +112,14 @@ class Pipeline:
                 node = self.parent_graph.add_node(node)
 
             self.nodes.append(node)
-        elif isinstance(items, list):
+        elif isinstance(items, GraphPartGroup):
             for v in items:
                 self += v
 
         return self
 
-    def __add__(self, node: Node) -> Self:
-        if node.parent_graph is None:
-            node = self.parent_graph.add_node(node)
-        self.nodes.append(node)
+    def __add__(self, part: Node | Edge | GraphPartGroup) -> Self:
+        self += part
         return self
 
 
@@ -156,8 +154,21 @@ class GraphSyntaxMixin:
         else:
             self._port_pipeline_map[port] = [pipeline]
 
-    def __iadd__(self, node: Node) -> Self:
-        self.add_node(node)
+    def __iadd__(self, part: Node | GraphPartGroup) -> Self:
+        if isinstance(part, Node):
+            self.add_node(part)
+        else:
+            self = self + part
+        return self
+
+    def __add__(self, part: Node | GraphPartGroup) -> Self:
+        if isinstance(part, GraphPartGroup):
+            for n in part:
+                assert isinstance(n, Node)
+                self.add_node(n)
+        else:
+            self.add_node(part)
+
         return self
 
     def __lshift__(self, node: G) -> G:
