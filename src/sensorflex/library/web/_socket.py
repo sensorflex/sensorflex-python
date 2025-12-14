@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+from asyncio import Lock
 from uuid import uuid4, UUID
 from dataclasses import dataclass
 from websockets import serve
@@ -11,7 +13,7 @@ from websockets.asyncio.server import ServerConnection
 from websockets.asyncio.client import connect
 from websockets.asyncio.client import ClientConnection
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, cast
 
 from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
 
@@ -77,7 +79,9 @@ class WebSocketServerNode(Node):
         Starts a WebSocket server and keeps it alive until cancelled.
         """
 
-        async with serve(self._handle_client, self.host, self.port) as server:
+        async with serve(
+            self._handle_client, self.host, self.port, max_size=None
+        ) as server:
             await server.serve_forever()
 
     async def _handle_client(self, conn: ServerConnection) -> None:
@@ -89,13 +93,14 @@ class WebSocketServerNode(Node):
 
         try:
             async for raw_msg in conn:
-                try:
-                    msg = json.loads(raw_msg)
-                except json.JSONDecodeError:
-                    msg = {"type": "raw", "data": raw_msg}
+                # try:
+                #     msg = json.loads(raw_msg)
+                # except json.JSONDecodeError:
+                #     msg = {"type": "raw", "data": raw_msg}
+                msg: bytes = cast(bytes, raw_msg)
 
                 # This triggers graph_to_notify.on_port_change(...)
-                self.o_message <<= WebSocketMessage(new_conn_id, msg)
+                self.o_message <<= WebSocketMessage(new_conn_id, {"data": msg})
         finally:
             del self._clients[new_conn_id]
 
@@ -126,6 +131,8 @@ class WebSocketClientNode(Node):
     _conn: Optional[ClientConnection]
     _client_id: UUID
 
+    _send_lock: Lock
+
     def __init__(
         self,
         uri: str = "ws://localhost:8765",
@@ -149,6 +156,8 @@ class WebSocketClientNode(Node):
         self._client_op = FutureOp(self._run_client)
         _ = self._client_op.start()
 
+        self._send_lock = Lock()
+
     def forward(self) -> None:
         """
         Called each tick by the graph.
@@ -168,7 +177,7 @@ class WebSocketClientNode(Node):
         Establishes a WebSocket connection and keeps reading messages
         until the connection is closed or the task is cancelled.
         """
-        async with connect(self.uri) as conn:
+        async with connect(self.uri, max_size=None) as conn:
             self._conn = conn
             try:
                 async for raw_msg in conn:
@@ -201,12 +210,23 @@ class WebSocketClientNode(Node):
 
         # print(self._conn, payload)
         if self._conn is not None:
-            await self._conn.send(json.dumps(payload))
+            if isinstance(payload, bytes):
+                data = payload
+            else:
+                data = json.dumps(payload)
+
+            try:
+                t0 = asyncio.get_running_loop().time()
+                async with self._send_lock:
+                    await self._conn.send(data)
+                dt = (asyncio.get_running_loop().time() - t0) * 1000
+                print(f"send took {dt:.2f} ms, size={len(data) / 1e6:.2f} MB")
+            except Exception as e:
+                print("error", e)
+
         else:
             # You could swap this to a logger if you have one
-            print(
-                f"[WebSocketClientNode] No active connection to send message: {payload}"
-            )
+            print("[WebSocketClientNode] No active connection to send message.")
 
     def cancel(self) -> None:
         """Cancel the client task via node API."""

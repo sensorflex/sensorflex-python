@@ -79,8 +79,15 @@ class Pipeline:
             self.push_data_for_node(self._from_node)
 
         for node in self.nodes:
+            # t0 = asyncio.get_running_loop().time()
             node.forward()
+            # dt = (asyncio.get_running_loop().time() - t0) * 1000
+            # print(f"{node.name} forward took {dt:.4f} ms.")
+
+            # t0 = asyncio.get_running_loop().time()
             self.push_data_for_node(node)
+            # dt = (asyncio.get_running_loop().time() - t0) * 1000
+            # print(f"{node.name} push_data took {dt:.4f} ms.")
 
     def push_data_for_node(self, node: Node):
         if edges := self._node_edge_map.get(node):

@@ -71,7 +71,6 @@ async def main():
     await asyncio.sleep(1)
 
     c_node.i_message <<= {"Hello": "World", "i": 0}
-    g.run_main_pipeline()
 
     await asyncio.Future()
     t.cancel()
