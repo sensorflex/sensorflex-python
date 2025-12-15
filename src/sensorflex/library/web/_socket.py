@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import pstats
 import asyncio
+import cProfile
 from asyncio import Lock
 from uuid import uuid4, UUID
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ from websockets.asyncio.client import ClientConnection
 from typing import Dict, Any, Optional, cast
 
 from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
+from sensorflex.utils.logging import Perf
 
 
 @dataclass
@@ -80,7 +83,12 @@ class WebSocketServerNode(Node):
         """
 
         async with serve(
-            self._handle_client, self.host, self.port, max_size=None
+            self._handle_client,
+            self.host,
+            self.port,
+            max_size=None,
+            write_limit=2**24,
+            compression=None,
         ) as server:
             await server.serve_forever()
 
@@ -177,7 +185,9 @@ class WebSocketClientNode(Node):
         Establishes a WebSocket connection and keeps reading messages
         until the connection is closed or the task is cancelled.
         """
-        async with connect(self.uri, max_size=None) as conn:
+        async with connect(
+            self.uri, max_size=None, write_limit=2**24, compression=None
+        ) as conn:
             self._conn = conn
             try:
                 async for raw_msg in conn:
@@ -216,11 +226,12 @@ class WebSocketClientNode(Node):
                 data = json.dumps(payload)
 
             try:
-                t0 = asyncio.get_running_loop().time()
+                # with Perf("self._conn.send(data)"):
+                # with cProfile.Profile() as pr:
                 async with self._send_lock:
                     await self._conn.send(data)
-                dt = (asyncio.get_running_loop().time() - t0) * 1000
-                print(f"send took {dt:.2f} ms, size={len(data) / 1e6:.2f} MB")
+                # pstats.Stats(pr).sort_stats("tottime").print_stats(30)
+
             except Exception as e:
                 print("error", e)
 

@@ -4,7 +4,6 @@ import cv2
 import asyncio
 import numpy as np
 import rerun as rr
-from typing import Any
 
 from numpy.typing import NDArray
 from sensorflex import Node, Graph, Port

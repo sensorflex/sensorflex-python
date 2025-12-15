@@ -80,6 +80,7 @@ class Pipeline:
 
         for node in self.nodes:
             # t0 = asyncio.get_running_loop().time()
+            # with Perf("forward"):
             node.forward()
             # dt = (asyncio.get_running_loop().time() - t0) * 1000
             # print(f"{node.name} forward took {dt:.4f} ms.")

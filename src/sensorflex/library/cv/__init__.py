@@ -1,3 +1,3 @@
-from ._webcam import WebcamNode
+from ._webcam import WebcamNode, RandImgNode
 
-__all__ = ["WebcamNode"]
+__all__ = ["WebcamNode", "RandImgNode"]

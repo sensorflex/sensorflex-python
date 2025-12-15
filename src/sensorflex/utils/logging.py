@@ -1,8 +1,22 @@
 """The default logging utility."""
 
 import logging
+import asyncio
 
 ROOT_LOGGER_NAME = "SensorFlex"
+
+
+class Perf:
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._loop = asyncio.get_running_loop()
+
+    def __enter__(self):
+        self._t0 = self._loop.time()
+
+    def __exit__(self, a, b, c):
+        dt = (self._loop.time() - self._t0) * 1000
+        print(f"Task {self._name} took {dt:.4f} ms")
 
 
 def get_logger(subsystem: str | None = None) -> logging.Logger:
