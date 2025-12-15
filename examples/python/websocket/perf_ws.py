@@ -40,7 +40,7 @@ async def handle_client(websocket):
 # Server task
 async def run_server():
     async with websockets.serve(
-        handle_client, "localhost", 8765, max_size=10 * 1024 * 1024, compression=None
+        handle_client, "localhost", 8765, max_size=None, compression=None
     ):
         print("[Server] Started on ws://localhost:8765")
         await asyncio.Future()  # Run forever
@@ -51,8 +51,10 @@ async def run_client(num_sends=10):
     # Wait for server to start
     await asyncio.sleep(0.5)
 
-    print(f"[Client] Creating 1920x1080x3 array...")
-    data_array = np.random.randint(0, 256, size=(1080, 1920, 3), dtype=np.uint8)
+    # the data payload size can be adjusted.
+    h, w = 1080 * 4, 1920 * 4
+    print(f"[Client] Creating {w}x{h}x3 array...")
+    data_array = np.random.randint(0, 256, size=(h, w, 3), dtype=np.uint8)
     data_bytes = data_array.tobytes()
     data_size_mb = len(data_bytes) / (1024 * 1024)
 
@@ -61,7 +63,7 @@ async def run_client(num_sends=10):
     print(f"[Client] Connecting...")
 
     async with websockets.connect(
-        "ws://localhost:8765", max_size=10 * 1024 * 1024, compression=None
+        "ws://localhost:8765", max_size=None, compression=None
     ) as websocket:
         print(f"[Client] Connected! Starting sends...\n")
 
