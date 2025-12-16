@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from uuid import UUID, uuid4
+import json
 import asyncio
 from aiortc import (
     RTCPeerConnection,
@@ -17,7 +18,7 @@ from av import VideoFrame
 from typing import cast, Any, Dict
 
 from sensorflex.core.runtime import Port, Node
-from sensorflex.library.net._socket import WebSocketMessage
+from sensorflex.library.net import WebSocketMessageEnvelope
 from sensorflex.utils.logging import get_logger
 
 LOGGER = get_logger("_service")
@@ -68,10 +69,10 @@ class WebRTCSessionNode(Node):
     higher-level state in your application code.
     """
 
-    i_message: Port[WebSocketMessage]
+    i_message: Port[WebSocketMessageEnvelope]
     i_frame: Port[VideoFrame]
 
-    o_message: Port[WebSocketMessage]
+    o_message: Port[WebSocketMessageEnvelope]
     o_data: Port[DataChannelMessage]
     o_frame: Port[VideoFrame]
 
@@ -108,6 +109,7 @@ class WebRTCSessionNode(Node):
 
         client_id = message.client_id
         payload = message.payload
+        payload = json.loads(payload)
 
         msg_type = payload.get("type")
         LOGGER.info("Signaling message from client: %s", msg_type)
@@ -136,12 +138,14 @@ class WebRTCSessionNode(Node):
             return
 
         LOGGER.info("Sending answer")
-        self.o_message <<= WebSocketMessage(
+        self.o_message <<= WebSocketMessageEnvelope(
             client_id=client_id,
-            payload={
-                "type": answer.type,
-                "sdp": answer.sdp,
-            },
+            payload=json.dumps(
+                {
+                    "type": answer.type,
+                    "sdp": answer.sdp,
+                }
+            ),
         )
 
     async def _handle_candidate(self, client_id: UUID, data: Dict[str, Any]) -> None:
