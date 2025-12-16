@@ -9,7 +9,7 @@ from typing import TypeVar, List, Dict, Self, overload, cast, Awaitable
 
 from ._node import Node
 from ._flow import Edge, Port, GraphPartGroup
-from sensorflex.utils.logging import get_logger
+from sensorflex.utils.logging import get_logger, Perf
 
 logger = get_logger("Graph")
 
@@ -79,9 +79,10 @@ class Pipeline:
             self.push_data_for_node(self._from_node)
 
         for node in self.nodes:
-            # t0 = asyncio.get_running_loop().time()
-            # with Perf("forward"):
-            node.forward()
+            with Perf(f"[{node.name}] forward."):
+                # t0 = asyncio.get_running_loop().time()
+                # with Perf("forward"):
+                node.forward()
             # dt = (asyncio.get_running_loop().time() - t0) * 1000
             # print(f"{node.name} forward took {dt:.4f} ms.")
 

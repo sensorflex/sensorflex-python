@@ -3,10 +3,10 @@
 Combined WebSocket test - runs server and client together with multiple sends
 """
 
+import time
 import asyncio
 import websockets
 import numpy as np
-import time
 
 
 # Server handler

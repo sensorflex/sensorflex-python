@@ -6,9 +6,51 @@ import cv2
 import asyncio
 import numpy as np
 from typing import Any
-
+from numpy.typing import NDArray
 
 from sensorflex.core.runtime import Node, Port, FutureOp
+
+
+def jpeg_encode_bgr(img_bgr: NDArray, quality: int = 90) -> NDArray:
+    """
+    img_bgr: uint8 NumPy array in BGR order (OpenCV default), shape (H,W,3) or (H,W)
+    returns: JPEG bytes
+    """
+    if img_bgr.dtype != np.uint8:
+        raise ValueError("img_bgr must be uint8")
+
+    ok, buf = cv2.imencode(
+        ".jpg",
+        img_bgr,
+        [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)],
+    )
+    if not ok:
+        raise RuntimeError("cv2.imencode failed")
+
+    return buf
+
+
+def png_encode(img: np.ndarray, compression: int = 3) -> NDArray:
+    """
+    img: uint8 NumPy array
+         - (H, W) grayscale
+         - (H, W, 3) BGR (OpenCV convention)
+         - (H, W, 4) BGRA
+    compression: 0 (none, fastest) → 9 (max, smallest)
+    returns: PNG bytes
+    """
+    if img.dtype != np.uint8:
+        raise ValueError("img must be uint8")
+
+    ok, buf = cv2.imencode(
+        ".png",
+        img,
+        [int(cv2.IMWRITE_PNG_COMPRESSION), int(compression)],
+    )
+    if not ok:
+        raise RuntimeError("cv2.imencode failed")
+
+    return buf
 
 
 class WebcamNode(Node):
@@ -61,6 +103,9 @@ class WebcamNode(Node):
 
         while True:
             _, frame = await self._read_cap()
+            t = frame
+            frame = jpeg_encode_bgr(frame)
+            print(t.size, frame.size, frame.size / t.size)
             self.o_frame <<= frame
 
     def cancel(self) -> None:
