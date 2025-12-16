@@ -101,12 +101,6 @@ class AruCoPostEstimationNode(Node):
         self.o_pose <<= T
 
 
-# If you have these in your framework already:
-# from sensorflex.core.runtime import Node, Port
-# from numpy.typing import NDArray
-# import numpy as np
-
-
 class RerunRGBVisNode(Node):
     """
     Logs:
