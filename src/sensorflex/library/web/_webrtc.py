@@ -112,13 +112,12 @@ class WebRTCSessionNode(Node):
         msg_type = payload.get("type")
         LOGGER.info("Signaling message from client: %s", msg_type)
 
-        match msg_type:
-            case "offer":
-                await self._handle_offer(client_id, payload)
-            case "candidate":
-                await self._handle_candidate(client_id, payload)
-            case _:
-                LOGGER.warning("Unknown signaling message type: %s", msg_type)
+        if msg_type == "offer":
+            await self._handle_offer(client_id, payload)
+        elif msg_type == "candidate":
+            await self._handle_candidate(client_id, payload)
+        else:
+            LOGGER.warning("Unknown signaling message type: %s", msg_type)
 
     async def _handle_offer(self, client_id: UUID, data: Dict[str, Any]) -> None:
         sdp = data.get("sdp")

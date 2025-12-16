@@ -17,15 +17,25 @@ class AsyncStepNode(Node):
         self.fetch_fop = FutureOp(self.fetch_data)
 
     def forward(self):
-        match self.fetch_fop.step():
-            case FutureState.STARTED:
-                self.state <<= "Started"
-            case FutureState.RUNNING:
-                self.state <<= "Running"
-            case FutureState.COMPLETED:
-                res = self.fetch_fop.get_result()
-                assert res is not None
-                self.state <<= "Done" + res
+        # For Python >= 3.10
+        # match self.fetch_fop.step():
+        #     case FutureState.STARTED:
+        #         self.state <<= "Started"
+        #     case FutureState.RUNNING:
+        #         self.state <<= "Running"
+        #     case FutureState.COMPLETED:
+        #         res = self.fetch_fop.get_result()
+        #         assert res is not None
+        #         self.state <<= "Done" + res
+
+        if self.fetch_fop is FutureState.STARTED:
+            self.state <<= "Started"
+        elif self.fetch_fop is FutureState.RUNNING:
+            self.state <<= "Running"
+        elif self.fetch_fop is FutureState.COMPLETED:
+            res = self.fetch_fop.get_result()
+            assert res is not None
+            self.state <<= "Done" + res
 
     async def fetch_data(self) -> str:
         await sleep(5.0)

@@ -5,7 +5,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 from threading import Thread
-from typing import TypeVar, List, Dict, Self, overload, cast, Awaitable
+from typing import TypeVar, List, Dict, overload, cast, Callable, Any, Awaitable
+
+try:
+    # For Python >= 3.11
+    from typing import Self
+except ImportError:
+    # For Python >= 3.8
+    from typing_extensions import Self
 
 from ._node import Node
 from ._flow import Edge, Port, GraphPartGroup
@@ -16,24 +23,21 @@ logger = get_logger("Graph")
 NP = TypeVar("NP", bound=Node)
 
 
-def _call_func(bind) -> None:
+def _call_func(bind: Callable[[], Awaitable[Any]] | Awaitable[Any] | None) -> None:
     if bind is None:
         return
 
-    # Case 1: bind is already a coroutine object
-    if inspect.iscoroutine(bind):
-        loop = asyncio.get_running_loop()
-        loop.create_task(bind)
+    # Case A: bind is already an awaitable (e.g., coroutine object / Task / Future)
+    if inspect.isawaitable(bind):
+        asyncio.ensure_future(bind)
         return
 
-    # Case 2: bind is a function: call it
+    # Case B: bind is a callable; call it
     result = bind()
 
-    # Case 3: result is an awaitable (async func)
+    # If callable returns an awaitable, schedule it
     if inspect.isawaitable(result):
-        assert result is Awaitable
-        loop = asyncio.get_running_loop()
-        loop.create_task(result)
+        asyncio.ensure_future(result)
 
 
 class Pipeline:
@@ -208,7 +212,7 @@ class GraphExecMixin:
                     for func in port.on_change:
                         _call_func(func)
                 else:
-                    _call_func(port.on_change())
+                    _call_func(port.on_change)
 
     def _exec_pipelines(self, port: Port):
         for pipeline in self._port_pipeline_map[port]:

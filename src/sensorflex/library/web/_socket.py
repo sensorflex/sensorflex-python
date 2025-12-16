@@ -71,9 +71,18 @@ class WebSocketServerNode(Node):
         """
 
         # Step the underlying async task
-        match self._server_op.step(restart=True):
-            case FutureState.COMPLETED | FutureState.FAILED | FutureState.CANCELLED:
-                self._server_op.reset()
+
+        # For Python >= 3.10
+        # match self._server_op.step(restart=True):
+        #     case FutureState.COMPLETED | FutureState.FAILED | FutureState.CANCELLED:
+        #         self._server_op.reset()
+
+        if (_ := self._server_op.step(restart=True)) in (
+            FutureState.COMPLETED,
+            FutureState.FAILED,
+            FutureState.CANCELLED,
+        ):
+            self._server_op.reset()
 
     async def _run_server(self) -> None:
         """
@@ -174,9 +183,12 @@ class WebSocketClientNode(Node):
         If the client task completes or fails, it will be restarted
         on the next tick (reconnect behavior).
         """
-        match self._client_op.step(restart=True):
-            case FutureState.COMPLETED | FutureState.FAILED | FutureState.CANCELLED:
-                self._client_op.reset()
+        if (_ := self._client_op.step(restart=True)) in (
+            FutureState.COMPLETED,
+            FutureState.FAILED,
+            FutureState.CANCELLED,
+        ):
+            self._client_op.reset()
 
     async def _run_client(self) -> None:
         """

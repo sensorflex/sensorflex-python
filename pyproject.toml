@@ -1,32 +1,38 @@
 [project]
 name = "sensorflex"
-version = "0.1.0"
-license = { file = "LICENSE" }
+version = "0.1.1"
+license = "Apache-2.0"
 description = "Modern real-time sensor compute and data management."
 authors = [{ name = "Yiqin Zhao", email = "yzigm@rit.edu" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = []
 
 [project.optional-dependencies]
-libweb = [
-    "aiortc (>=1.14.0,<2.0.0)",
-    "websockets (>=15.0.1,<16.0.0)",
-    "av (>=16.0.1,<17.0.0)",
-    "msgspec (>=0.20.0,<0.21.0)",
+libnet = [
+    "websockets (>=15.0.1,<16.0.0); python_version >= '3.9'",
+    "msgspec (>=0.20.0,<0.21.0); python_version >= '3.9'",
 ]
 
-libvis = ["rerun-sdk (>=0.27.0,<0.28.0)"]
+librtc = [
+    "aiortc (>=1.14.0,<2.0.0); python_version >= '3.10'",
+    "av (>=16.0.1,<17.0.0); python_version >= '3.10'",
+]
 
-libcv = ["pillow (>=12.0.0,<13.0.0)", "opencv-python (>=4.12.0.88,<5.0.0.0)"]
+libvis = ["rerun-sdk"]
+
+libcv = [
+    "pillow (>=12.0.0,<13.0.0); python_version >= '3.10'",
+    "opencv-python (>=4.12.0.88,<5.0.0.0)",
+]
 
 all = [
-    "aiortc (>=1.14.0,<2.0.0)",
-    "websockets (>=15.0.1,<16.0.0)",
-    "av (>=16.0.1,<17.0.0)",
-    "msgspec (>=0.20.0,<0.21.0)",
-    "rerun-sdk (>=0.27.0,<0.28.0)",
-    "pillow (>=12.0.0,<13.0.0)",
+    "aiortc (>=1.14.0,<2.0.0); python_version >= '3.10'",
+    "av (>=16.0.1,<17.0.0); python_version >= '3.10'",
+    "websockets (>=15.0.1,<16.0.0); python_version >= '3.9'",
+    "msgspec (>=0.20.0,<0.21.0); python_version >= '3.9'",
+    "rerun-sdk",
+    "pillow (>=12.0.0,<13.0.0); python_version >= '3.10'",
     "opencv-python (>=4.12.0.88,<5.0.0.0)",
 ]
 
