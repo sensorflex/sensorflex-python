@@ -11,7 +11,7 @@ from typing import (
     TYPE_CHECKING,
     List,
     Iterator,
-    Awaitable
+    Awaitable,
 )
 from enum import Enum, auto
 
@@ -64,7 +64,9 @@ class Port(Generic[TP]):
     _is_branched_pipeline_head: bool
 
     def __init__(
-        self, value: Optional[TP], on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None = None
+        self,
+        value: Optional[TP],
+        on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None = None,
     ) -> None:
         self.value = value
         self.on_change = on_change

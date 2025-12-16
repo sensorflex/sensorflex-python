@@ -1,11 +1,16 @@
 {
     "cSpell.words": [
         "aiortc",
+        "aruco",
+        "coeffs",
         "connectionstatechange",
         "datachannels",
         "iceconnectionstatechange",
         "imshow",
+        "IPPE",
+        "Rodrigues",
         "sensorflex",
+        "SOLVEPNP",
         "webrtc",
         "Yiqin",
         "Zhao"
