@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+from typing import Union
 
 ROOT_LOGGER_NAME = "SensorFlex"
 
@@ -19,7 +20,7 @@ class Perf:
         print(f"Task {self._name} took {dt:.4f} ms")
 
 
-def get_logger(subsystem: str | None = None) -> logging.Logger:
+def get_logger(subsystem: Union[str, None] = None) -> logging.Logger:
     """
     Get a logger under the 'SensorFlex' namespace.
     Examples:

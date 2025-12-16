@@ -5,13 +5,13 @@ license = "Apache-2.0"
 description = "Modern real-time sensor compute and data management."
 authors = [{ name = "Yiqin Zhao", email = "yzigm@rit.edu" }]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
 libnet = [
-    "websockets (>=15.0.1,<16.0.0); python_version >= '3.9'",
-    "msgspec (>=0.20.0,<0.21.0); python_version >= '3.9'",
+    "websockets (>=15.0.1,<16.0.0)",
+    "msgspec (>=0.20.0,<0.21.0)",
 ]
 
 librtc = [
@@ -22,17 +22,17 @@ librtc = [
 libvis = ["rerun-sdk"]
 
 libcv = [
-    "pillow (>=12.0.0,<13.0.0); python_version >= '3.10'",
+    "pillow (>=11.0.0,<13.0.0)",
     "opencv-python (>=4.12.0.88,<5.0.0.0)",
 ]
 
 all = [
     "aiortc (>=1.14.0,<2.0.0); python_version >= '3.10'",
     "av (>=16.0.1,<17.0.0); python_version >= '3.10'",
-    "websockets (>=15.0.1,<16.0.0); python_version >= '3.9'",
-    "msgspec (>=0.20.0,<0.21.0); python_version >= '3.9'",
+    "websockets (>=15.0.1,<16.0.0)",
+    "msgspec (>=0.20.0,<0.21.0)",
     "rerun-sdk",
-    "pillow (>=12.0.0,<13.0.0); python_version >= '3.10'",
+    "pillow (>=9.0.0,<13.0.0)",
     "opencv-python (>=4.12.0.88,<5.0.0.0)",
 ]
 

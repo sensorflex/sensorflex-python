@@ -4,11 +4,12 @@ import cv2
 import asyncio
 import numpy as np
 import rerun as rr
+from typing import Union
 
 from numpy.typing import NDArray
 from sensorflex import Node, Graph, Port
 from sensorflex.library.cv import WebcamNode
-from sensorflex.library.web import (
+from sensorflex.library.net import (
     WebSocketServerNode,
     WebSocketClientNode,
     WebSocketMessage,
@@ -43,7 +44,7 @@ class RerunRGBVisNode(Node):
 class VisNode(Node):
     i_arr: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i_arr = Port(None)
 
@@ -60,7 +61,7 @@ class FrameEncoderNode(Node):
     i_frame: Port[cv2.typing.MatLike]
     o_frame: Port[bytes]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
 
         self.i_frame = Port(None)
@@ -108,7 +109,7 @@ class FrameDecoderNode(Node):
     i_frame: Port[WebSocketMessage]
     o_frame: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
 
         self.i_frame = Port(None)

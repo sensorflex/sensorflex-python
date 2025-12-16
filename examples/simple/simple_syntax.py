@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 from sensorflex import Graph, Node, Port
-from sensorflex.library.web import WebSocketServerNode
+from sensorflex.library.net import WebSocketServerNode
 
 
 class PrintNode(Node):

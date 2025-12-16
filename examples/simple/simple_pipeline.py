@@ -7,7 +7,7 @@ from typing import Any
 from numpy.typing import NDArray
 
 from sensorflex import Node, Graph, Port
-from sensorflex.library.web import WebSocketServerNode
+from sensorflex.library.net import WebSocketServerNode
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()

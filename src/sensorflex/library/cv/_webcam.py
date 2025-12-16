@@ -103,9 +103,9 @@ class WebcamNode(Node):
 
         while True:
             _, frame = await self._read_cap()
-            t = frame
+            # t = frame
             frame = jpeg_encode_bgr(frame)
-            print(t.size, frame.size, frame.size / t.size)
+            # print(t.size, frame.size, frame.size / t.size)
             self.o_frame <<= frame
 
     def cancel(self) -> None:

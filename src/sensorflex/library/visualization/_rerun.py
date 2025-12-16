@@ -1,7 +1,7 @@
 """Data visualization library."""
 
 import rerun as rr
-from av import VideoFrame
+from numpy.typing import NDArray
 
 from sensorflex.core.runtime import Node, Port
 from sensorflex.utils.logging import get_logger
@@ -24,7 +24,7 @@ class RerunVideoVisNode(Node):
     Video track handler that logs frames to Rerun.
     """
 
-    i_frame: Port[VideoFrame]
+    i_frame: Port[NDArray]
 
     _i: int
 
@@ -34,7 +34,7 @@ class RerunVideoVisNode(Node):
         self.i_frame = Port(None)
 
     def forward(self) -> None:
-        rgb = (~self.i_frame).to_rgb().to_ndarray(channel_last=True)
+        rgb = ~self.i_frame
         rr.set_time("frame_idx", sequence=self._i)
         rr.log(self.name, rr.Image(rgb, color_model="RGB"))
         self._i += 1

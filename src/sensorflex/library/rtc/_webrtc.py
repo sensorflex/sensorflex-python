@@ -17,7 +17,7 @@ from av import VideoFrame
 from typing import cast, Any, Dict
 
 from sensorflex.core.runtime import Port, Node
-from sensorflex.library.web._socket import WebSocketMessage
+from sensorflex.library.net._socket import WebSocketMessage
 from sensorflex.utils.logging import get_logger
 
 LOGGER = get_logger("_service")

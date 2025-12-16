@@ -6,7 +6,7 @@ import numpy as np
 from av import VideoFrame
 
 from sensorflex import Graph, Node, Port
-from sensorflex.library.web import WebSocketServerNode, WebRTCSessionNode
+from sensorflex.library.net import WebSocketServerNode, WebRTCSessionNode
 from sensorflex.library.visualization import init_rerun_context, RerunVideoVisNode
 from sensorflex.utils.logging import configure_default_logging
 

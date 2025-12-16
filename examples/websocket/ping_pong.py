@@ -5,7 +5,7 @@ import asyncio
 from typing import Any
 
 from sensorflex import Node, Graph, Port
-from sensorflex.library.web import (
+from sensorflex.library.net import (
     WebSocketServerNode,
     WebSocketClientNode,
     WebSocketMessage,
