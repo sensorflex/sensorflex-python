@@ -9,7 +9,7 @@ from typing import TypeVar, List, Dict, overload, cast, Callable, Any, Awaitable
 
 from ._node import Node
 from ._flow import Edge, Port, GraphPartGroup
-from sensorflex.utils.logging import get_logger, Perf
+from sensorflex.utils.logging import get_logger
 
 logger = get_logger("Graph")
 
@@ -75,6 +75,7 @@ class Pipeline:
         if self._from_node:
             self.push_data_for_node(self._from_node)
 
+        # from sensorflex.utils.logging import Perf
         for node in self.nodes:
             # with Perf(f"[{node.name}] forward."):
             node.forward()
