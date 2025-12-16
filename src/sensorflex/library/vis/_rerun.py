@@ -7,7 +7,7 @@ from sensorflex.core.runtime import Node, Port
 from sensorflex.utils.logging import get_logger
 
 
-LOGGER = get_logger("_visualization")
+LOGGER = get_logger("Visualization")
 
 
 # ---------------------------------------------------------------------------
