@@ -7,13 +7,6 @@ import inspect
 from threading import Thread
 from typing import TypeVar, List, Dict, overload, cast, Callable, Any, Awaitable
 
-try:
-    # For Python >= 3.11
-    from typing import Self
-except ImportError:
-    # For Python >= 3.8
-    from typing_extensions import Self
-
 from ._node import Node
 from ._flow import Edge, Port, GraphPartGroup
 from sensorflex.utils.logging import get_logger, Perf
@@ -99,15 +92,15 @@ class Pipeline:
         self += node_or_edge
 
     @overload
-    def __iadd__(self, items: Node) -> Self: ...
+    def __iadd__(self, items: Node) -> Pipeline: ...
 
     @overload
-    def __iadd__(self, items: Edge) -> Self: ...
+    def __iadd__(self, items: Edge) -> Pipeline: ...
 
     @overload
-    def __iadd__(self, items: GraphPartGroup) -> Self: ...
+    def __iadd__(self, items: GraphPartGroup) -> Pipeline: ...
 
-    def __iadd__(self, items: Node | Edge | GraphPartGroup) -> Self:
+    def __iadd__(self, items: Node | Edge | GraphPartGroup) -> Pipeline:
         if isinstance(items, Edge):
             edge: Edge = items
             self.add_edge(edge)
@@ -124,66 +117,12 @@ class Pipeline:
 
         return self
 
-    def __add__(self, part: Node | Edge | GraphPartGroup) -> Self:
+    def __add__(self, part: Node | Edge | GraphPartGroup) -> Pipeline:
         self += part
         return self
 
 
 G = TypeVar("G", bound=Node)
-
-
-class GraphSyntaxMixin:
-    nodes: List[Node]
-    edges: List[Edge]
-
-    _port_pipeline_map: Dict[Port, List[Pipeline]]
-
-    def _register_ports(self, node: Node) -> bool:
-        for name in dir(node):
-            obj = getattr(node, name)
-
-            if isinstance(obj, Port):
-                node._ports[name] = obj
-                obj.parent_node = node
-
-        return True
-
-    def add_node(self, node: G) -> G:
-        node.parent_graph = cast(Graph, self)
-        self._register_ports(node)
-        self.nodes.append(node)
-        return node
-
-    def add_pipeline(self, port: Port, pipeline: Pipeline):
-        if port in self._port_pipeline_map:
-            self._port_pipeline_map[port].append(pipeline)
-        else:
-            self._port_pipeline_map[port] = [pipeline]
-
-    def __iadd__(self, part: Node | GraphPartGroup) -> Self:
-        if isinstance(part, Node):
-            self.add_node(part)
-        else:
-            self = self + part
-        return self
-
-    def __add__(self, part: Node | GraphPartGroup) -> Self:
-        if isinstance(part, GraphPartGroup):
-            for n in part:
-                assert isinstance(n, Node)
-                self.add_node(n)
-        else:
-            self.add_node(part)
-
-        return self
-
-    def __lshift__(self, node: G) -> G:
-        """To support: g << SomeNode()"""
-        node = self.add_node(node)
-        return node
-
-    def connect(self, left_port: Port, right_port: Port) -> Edge:
-        return left_port >> right_port
 
 
 class GraphExecMixin:
@@ -233,7 +172,7 @@ class GraphExecMixin:
         return t
 
 
-class Graph(GraphSyntaxMixin, GraphExecMixin):
+class Graph(GraphExecMixin):
     nodes: List[Node]
     edges: List[Edge]
 
@@ -261,3 +200,50 @@ class Graph(GraphSyntaxMixin, GraphExecMixin):
         # For async/event-driven mode in a dedicated thread
         self._loop = asyncio.get_event_loop()
         self._event_queue = asyncio.Queue()
+
+    def _register_ports(self, node: Node) -> bool:
+        for name in dir(node):
+            obj = getattr(node, name)
+
+            if isinstance(obj, Port):
+                node._ports[name] = obj
+                obj.parent_node = node
+
+        return True
+
+    def add_node(self, node: G) -> G:
+        node.parent_graph = cast(Graph, self)
+        self._register_ports(node)
+        self.nodes.append(node)
+        return node
+
+    def add_pipeline(self, port: Port, pipeline: Pipeline):
+        if port in self._port_pipeline_map:
+            self._port_pipeline_map[port].append(pipeline)
+        else:
+            self._port_pipeline_map[port] = [pipeline]
+
+    def __iadd__(self, part: Node | GraphPartGroup) -> Graph:
+        if isinstance(part, Node):
+            self.add_node(part)
+        else:
+            self = self + part
+        return self
+
+    def __add__(self, part: Node | GraphPartGroup) -> Graph:
+        if isinstance(part, GraphPartGroup):
+            for n in part:
+                assert isinstance(n, Node)
+                self.add_node(n)
+        else:
+            self.add_node(part)
+
+        return self
+
+    def __lshift__(self, node: G) -> G:
+        """To support: g << SomeNode()"""
+        node = self.add_node(node)
+        return node
+
+    def connect(self, left_port: Port, right_port: Port) -> Edge:
+        return left_port >> right_port
