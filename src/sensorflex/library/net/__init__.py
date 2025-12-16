@@ -1,7 +1,15 @@
-from ._socket import WebSocketServerNode, WebSocketMessage, WebSocketClientNode
+from ._socket import (
+    WebSocketClientNode,
+    WebSocketClientConfig,
+    WebSocketServerNode,
+    WebSocketServerConfig,
+    WebSocketMessageEnvelope,
+)
 
 __all__ = [
     "WebSocketServerNode",
-    "WebSocketMessage",
+    "WebSocketServerConfig",
+    "WebSocketMessageEnvelope",
     "WebSocketClientNode",
+    "WebSocketClientConfig",
 ]

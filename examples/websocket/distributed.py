@@ -12,7 +12,9 @@ from sensorflex.library.cv import WebcamNode
 from sensorflex.library.net import (
     WebSocketServerNode,
     WebSocketClientNode,
-    WebSocketMessage,
+    WebSocketMessageEnvelope,
+    WebSocketClientConfig,
+    WebSocketServerConfig,
 )
 from sensorflex.library.vis import init_rerun_context
 from sensorflex.utils.logging import configure_default_logging
@@ -106,7 +108,7 @@ def png_decode(png_bytes: bytes, flags=cv2.IMREAD_UNCHANGED) -> NDArray:
 
 
 class FrameDecoderNode(Node):
-    i_frame: Port[WebSocketMessage]
+    i_frame: Port[WebSocketMessageEnvelope]
     o_frame: Port[NDArray]
 
     def __init__(self, name: Union[str, None] = None) -> None:
@@ -117,7 +119,6 @@ class FrameDecoderNode(Node):
 
     def forward(self):
         payload = (~self.i_frame).payload
-        payload = payload["data"]
         assert type(payload) is bytes
         payload = jpeg_decode_bgr(payload)
         payload = payload.reshape((1080, 1920, 3))
@@ -130,7 +131,15 @@ def get_graph():
 
     # Run the following code on a computer with webcam.
     g += (
-        (c_node := WebSocketClientNode())
+        (
+            c_node := WebSocketClientNode(
+                uri="ws://localhost:8765",
+                config=WebSocketClientConfig(
+                    max_size=None,
+                    compression=None,
+                ),
+            )
+        )
         + (cam_node := WebcamNode())
         + (e_node := FrameEncoderNode())
     )
@@ -144,7 +153,14 @@ def get_graph():
 
     # Run this part on another computer.
     g += (
-        (s_node := WebSocketServerNode())
+        (
+            s_node := WebSocketServerNode(
+                config=WebSocketServerConfig(
+                    max_size=None,
+                    compression=None,
+                )
+            )
+        )
         + (d_node := FrameDecoderNode())
         + (v_node := RerunRGBVisNode())
     )

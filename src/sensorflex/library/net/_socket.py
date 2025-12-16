@@ -2,29 +2,82 @@
 
 from __future__ import annotations
 
-import json
-import pstats
-import asyncio
-import cProfile
+from re import Pattern
 from asyncio import Lock
 from uuid import uuid4, UUID
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal, Callable, Sequence, Awaitable
+
 from websockets import serve
-
+from websockets.typing import Data, Origin, Subprotocol
+from websockets.http11 import USER_AGENT, SERVER, Request, Response
+from websockets.datastructures import HeadersLike
 from websockets.asyncio.server import ServerConnection
-from websockets.asyncio.client import connect
-from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.client import connect, process_exception, ClientConnection
+from websockets.extensions.base import ClientExtensionFactory, ServerExtensionFactory
 
-from typing import Dict, Any, Optional, cast
+from typing import Dict, Optional, Any
 
 from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
-from sensorflex.utils.logging import Perf
+from sensorflex.utils.logging import get_logger
+
+logger = get_logger("WebSocket")
+
+
+@dataclass(frozen=True, slots=True)
+class WebSocketServerConfig:
+    # WebSocket
+    origins: Sequence[Origin | Pattern[str] | None] | None = None
+    extensions: Sequence[ServerExtensionFactory] | None = None
+    subprotocols: Sequence[Subprotocol] | None = None
+    select_subprotocol: (
+        Callable[
+            [ServerConnection, Sequence[Subprotocol]],
+            Subprotocol | None,
+        ]
+        | None
+    ) = None
+    compression: str | None = "deflate"
+
+    # HTTP
+    process_request: (
+        Callable[
+            [ServerConnection, Request],
+            Awaitable[Response | None] | Response | None,
+        ]
+        | None
+    ) = None
+    process_response: (
+        Callable[
+            [ServerConnection, Request, Response],
+            Awaitable[Response | None] | Response | None,
+        ]
+        | None
+    ) = None
+    server_header: str | None = SERVER
+
+    # Timeouts
+    open_timeout: float | None = 10
+    ping_interval: float | None = 20
+    ping_timeout: float | None = 20
+    close_timeout: float | None = 10
+
+    # Limits
+    max_size: int | None = 2**20
+    max_queue: int | None | tuple[int | None, int | None] = 16
+    write_limit: int | tuple[int, int | None] = 2**15
+
+    # Escape hatch
+    create_connection: type[ServerConnection] | None = None
+
+    # loop.create_server passthrough
+    kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class WebSocketMessage:
+class WebSocketMessageEnvelope:
     client_id: UUID
-    payload: Dict[str, Any]
+    payload: Data
 
 
 class WebSocketServerNode(Node):
@@ -33,10 +86,11 @@ class WebSocketServerNode(Node):
     port: int
 
     # Output ports
-    i_message: Port[WebSocketMessage]
-    o_message: Port[WebSocketMessage]
+    i_message: Port[WebSocketMessageEnvelope]
+    o_message: Port[WebSocketMessageEnvelope]
 
     # Internal states
+    _config: WebSocketServerConfig
     _server_op: FutureOp[None]
     _clients: Dict[UUID, ServerConnection]
 
@@ -44,6 +98,7 @@ class WebSocketServerNode(Node):
         self,
         host: str = "0.0.0.0",
         port: int = 8765,
+        config: WebSocketServerConfig | None = None,
         name: str | None = None,
     ) -> None:
         super().__init__(name)
@@ -57,6 +112,7 @@ class WebSocketServerNode(Node):
         self.o_message = Port(None)
 
         # Internal async machinery
+        self._config = config or WebSocketServerConfig()
         self._server_op: FutureOp[None] = FutureOp(self._run_server)
         _ = self._server_op.start()
 
@@ -91,13 +147,29 @@ class WebSocketServerNode(Node):
         Starts a WebSocket server and keeps it alive until cancelled.
         """
 
+        c = self._config
+
         async with serve(
             self._handle_client,
             self.host,
             self.port,
-            max_size=None,
-            write_limit=2**24,
-            compression=None,
+            origins=c.origins,
+            extensions=c.extensions,
+            subprotocols=c.subprotocols,
+            select_subprotocol=c.select_subprotocol,
+            compression=c.compression,
+            process_request=c.process_request,
+            process_response=c.process_response,
+            server_header=c.server_header,
+            open_timeout=c.open_timeout,
+            ping_interval=c.ping_interval,
+            ping_timeout=c.ping_timeout,
+            close_timeout=c.close_timeout,
+            max_size=c.max_size,
+            max_queue=c.max_queue,
+            write_limit=c.write_limit,
+            logger=logger,
+            **c.kwargs,
         ) as server:
             await server.serve_forever()
 
@@ -109,15 +181,8 @@ class WebSocketServerNode(Node):
         self._clients[new_conn_id] = conn
 
         try:
-            async for raw_msg in conn:
-                # try:
-                #     msg = json.loads(raw_msg)
-                # except json.JSONDecodeError:
-                #     msg = {"type": "raw", "data": raw_msg}
-                msg: bytes = cast(bytes, raw_msg)
-
-                # This triggers graph_to_notify.on_port_change(...)
-                self.o_message <<= WebSocketMessage(new_conn_id, {"data": msg})
+            async for msg in conn:
+                self.o_message <<= WebSocketMessageEnvelope(new_conn_id, msg)
         finally:
             del self._clients[new_conn_id]
 
@@ -126,9 +191,9 @@ class WebSocketServerNode(Node):
 
         if msg.client_id in self._clients:
             conn = self._clients[msg.client_id]
-            await conn.send(json.dumps(msg.payload))
+            await conn.send(msg.payload)
         else:
-            print(f"Connection closed for {msg.client_id}")
+            logger.info(f"Connection closed for {msg.client_id}")
 
     def cancel(self) -> None:
         """Cancel the server task via node API."""
@@ -136,12 +201,39 @@ class WebSocketServerNode(Node):
             self._server_op.cancel()
 
 
+@dataclass(frozen=True, slots=True)
+class WebSocketClientConfig:
+    # WebSocket
+    origin: Origin | None = None
+    extensions: Sequence[ClientExtensionFactory] | None = None
+    subprotocols: Sequence[Subprotocol] | None = None
+    compression: str | None = "deflate"
+    # HTTP
+    additional_headers: HeadersLike | None = None
+    user_agent_header: str | None = USER_AGENT
+    proxy: str | Literal[True] | None = True
+    process_exception: Callable[[Exception], Exception | None] = process_exception
+    # Timeouts
+    open_timeout: float | None = 10
+    ping_interval: float | None = 20
+    ping_timeout: float | None = 20
+    close_timeout: float | None = 10
+    # Limits
+    max_size: int | None = 2**20
+    max_queue: int | None | tuple[int | None, int | None] = 16
+    write_limit: int | tuple[int, int | None] = 2**15
+    # Escape hatch
+    create_connection: type[ClientConnection] | None = None
+    # loop.create_connection kwargs passthrough
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+
 class WebSocketClientNode(Node):
     uri: str  # e.g. "ws://localhost:8765"
 
     # Ports
-    i_message: Port[Any]
-    o_message: Port[Any]
+    i_message: Port[Data]
+    o_message: Port[Data]
 
     # Internal state
     _client_op: FutureOp[None]
@@ -153,7 +245,10 @@ class WebSocketClientNode(Node):
     def __init__(
         self,
         uri: str = "ws://localhost:8765",
+        config: WebSocketClientConfig | None = None,
+        # Other keyword arguments are passed to loop.create_connection
         name: str | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(name)
 
@@ -170,6 +265,7 @@ class WebSocketClientNode(Node):
 
         # Internal async machinery
         self._conn = None
+        self._client_config = config or WebSocketClientConfig(kwargs=kwargs)
         self._client_op = FutureOp(self._run_client)
         _ = self._client_op.start()
 
@@ -197,18 +293,33 @@ class WebSocketClientNode(Node):
         Establishes a WebSocket connection and keeps reading messages
         until the connection is closed or the task is cancelled.
         """
+        c = self._client_config
+
         async with connect(
-            self.uri, max_size=None, write_limit=2**24, compression=None
+            self.uri,
+            origin=c.origin,
+            extensions=c.extensions,
+            subprotocols=c.subprotocols,
+            compression=c.compression,
+            additional_headers=c.additional_headers,
+            user_agent_header=c.user_agent_header,
+            proxy=c.proxy,
+            process_exception=c.process_exception,
+            open_timeout=c.open_timeout,
+            ping_interval=c.ping_interval,
+            ping_timeout=c.ping_timeout,
+            close_timeout=c.close_timeout,
+            max_size=c.max_size,
+            max_queue=c.max_queue,
+            write_limit=c.write_limit,
+            create_connection=c.create_connection,
+            logger=logger,
+            **c.kwargs,
         ) as conn:
             self._conn = conn
             try:
                 async for raw_msg in conn:
-                    try:
-                        msg = json.loads(raw_msg)
-                    except json.JSONDecodeError:
-                        msg = {"type": "raw", "data": raw_msg}
-
-                    self.o_message <<= msg
+                    self.o_message <<= raw_msg
             finally:
                 self._conn = None
 
@@ -219,37 +330,24 @@ class WebSocketClientNode(Node):
         Uses the current WebSocket connection (if available) to send
         the payload to the server.
         """
-        msg = ~self.i_message
-        if msg is None:
-            return
+        payload = ~self.i_message
 
-        # Allow user to pass either WebSocketMessage or raw dict
-        if isinstance(msg, WebSocketMessage):
-            payload = msg.payload
-        else:
-            # Fallback: treat as raw payload dict
-            payload = msg
+        assert payload is not None
 
-        # print(self._conn, payload)
         if self._conn is not None:
-            if isinstance(payload, bytes):
-                data = payload
-            else:
-                data = json.dumps(payload)
-
             try:
                 # with Perf("self._conn.send(data)"):
                 # with cProfile.Profile() as pr:
                 async with self._send_lock:
-                    await self._conn.send(data)
+                    await self._conn.send(payload)
                 # pstats.Stats(pr).sort_stats("tottime").print_stats(30)
 
             except Exception as e:
-                print("error", e)
+                logger.error(e)
 
         else:
             # You could swap this to a logger if you have one
-            print("[WebSocketClientNode] No active connection to send message.")
+            logger.error("No active server connection to send message.")
 
     def cancel(self) -> None:
         """Cancel the client task via node API."""
