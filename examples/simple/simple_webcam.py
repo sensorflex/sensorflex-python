@@ -2,6 +2,7 @@
 
 import cv2
 import asyncio
+from typing import Union
 from numpy.typing import NDArray
 
 from sensorflex import Node, Graph, Port
@@ -15,7 +16,7 @@ class VFXNode(Node):
     i_frame: Port[NDArray]
     o_frame: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i_frame = Port(None)
         self.o_frame = Port(None)
@@ -30,7 +31,7 @@ class VFXNode(Node):
 class PrintShapeNode(Node):
     i_arr: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i_arr = Port(None)
 

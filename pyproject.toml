@@ -15,8 +15,8 @@ libnet = [
 ]
 
 librtc = [
-    "aiortc (>=1.14.0,<2.0.0); python_version >= '3.10'",
-    "av (>=16.0.1,<17.0.0); python_version >= '3.10'",
+    "aiortc (>=1.10.0,<2.0.0)",
+    "av (>=13.0.0,<17.0.0)",
 ]
 
 libvis = ["rerun-sdk"]
@@ -27,8 +27,8 @@ libcv = [
 ]
 
 all = [
-    "aiortc (>=1.14.0,<2.0.0); python_version >= '3.10'",
-    "av (>=16.0.1,<17.0.0); python_version >= '3.10'",
+    "aiortc (>=1.10.0,<2.0.0)",
+    "av (>=13.0.0,<17.0.0)",
     "websockets (>=15.0.1,<16.0.0)",
     "msgspec (>=0.20.0,<0.21.0)",
     "rerun-sdk",

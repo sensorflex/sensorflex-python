@@ -1,7 +1,7 @@
 """A simple WebRTC server."""
 
 import asyncio
-from typing import Any
+from typing import Any, Union
 
 from sensorflex import Graph, Node, Port
 from sensorflex.library.net import WebSocketServerNode
@@ -10,7 +10,7 @@ from sensorflex.library.net import WebSocketServerNode
 class PrintNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 

@@ -2,7 +2,7 @@
 
 import time
 import asyncio
-from typing import Any
+from typing import Any, Union
 
 from sensorflex import Node, Graph, Port
 from sensorflex.library.net import (
@@ -18,7 +18,7 @@ configure_default_logging()
 class PrintNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 
@@ -30,7 +30,7 @@ class DelayNode(Node):
     i_value: Port[WebSocketMessage]
     o_value: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i_value = Port(None)
         self.o_value = Port(None)

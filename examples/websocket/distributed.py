@@ -14,7 +14,7 @@ from sensorflex.library.net import (
     WebSocketClientNode,
     WebSocketMessage,
 )
-from sensorflex.library.visualization import init_rerun_context
+from sensorflex.library.vis import init_rerun_context
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()

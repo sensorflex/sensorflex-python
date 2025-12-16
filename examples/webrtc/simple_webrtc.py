@@ -1,13 +1,15 @@
 """A simple WebRTC server."""
 
 import asyncio
-from typing import Any
+from typing import Any, Union
+
 import numpy as np
 from av import VideoFrame
 
 from sensorflex import Graph, Node, Port
-from sensorflex.library.net import WebSocketServerNode, WebRTCSessionNode
-from sensorflex.library.visualization import init_rerun_context, RerunVideoVisNode
+from sensorflex.library.net import WebSocketServerNode
+from sensorflex.library.rtc import WebRTCSessionNode
+from sensorflex.library.vis import init_rerun_context, RerunVideoVisNode
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()
@@ -16,7 +18,7 @@ configure_default_logging()
 class PrintNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 
@@ -28,7 +30,7 @@ class VFXNode(Node):
     i_frame: Port[VideoFrame]
     o_frame: Port[VideoFrame]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i_frame = Port(None)
         self.o_frame = Port(None)

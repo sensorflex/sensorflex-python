@@ -1,7 +1,7 @@
 """A simple example for using async Future objects."""
 
 from asyncio import sleep, run
-from typing import Any
+from typing import Any, Union
 
 from sensorflex import Node, Graph, Port, FutureOp, FutureState
 
@@ -11,7 +11,7 @@ class AsyncStepNode(Node):
 
     fetch_fop: FutureOp[str]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.state = Port("None")
         self.fetch_fop = FutureOp(self.fetch_data)
@@ -45,7 +45,7 @@ class AsyncStepNode(Node):
 class PrintNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 

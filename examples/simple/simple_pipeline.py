@@ -3,7 +3,7 @@
 import time
 import asyncio
 import numpy as np
-from typing import Any
+from typing import Any, Union
 from numpy.typing import NDArray
 
 from sensorflex import Node, Graph, Port
@@ -19,7 +19,7 @@ class ImageLoadingNode(Node):
     i: Port[int]
     bgr: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.i = Port(0)
         self.bgr = Port(None)
@@ -35,7 +35,7 @@ class ImageTransformationNode(Node):
     bgr: Port[NDArray]
     rgb: Port[NDArray]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.bgr = Port(None)
         self.rgb = Port(None)
@@ -49,7 +49,7 @@ class ImageTransformationNode(Node):
 class WaitNode(Node):
     wait_seconds: int
 
-    def __init__(self, wait_seconds: int, name: str | None = None) -> None:
+    def __init__(self, wait_seconds: int, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.wait_seconds = wait_seconds
 
@@ -60,7 +60,7 @@ class WaitNode(Node):
 class PrintNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 
@@ -71,7 +71,7 @@ class PrintNode(Node):
 class PrintEventNode(Node):
     field: Port[Any]
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 
