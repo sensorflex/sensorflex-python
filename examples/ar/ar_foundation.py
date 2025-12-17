@@ -1,12 +1,10 @@
 """A simple example for using a distributed graph."""
 
-from typing import Union, Tuple, Optional
+from typing import Union
 
 import cv2
 import asyncio
 import numpy as np
-import rerun as rr
-import rerun.blueprint as rrb
 
 from numpy.typing import NDArray
 from sensorflex import Node, Graph, Port
@@ -31,6 +29,8 @@ class AruCoPostEstimationNode(Node):
     i_frame: Port[NDArray]
     o_pose: Port[NDArray]
 
+    o_draw: Port[NDArray]
+
     def __init__(
         self,
         camera_matrix: NDArray,
@@ -40,21 +40,25 @@ class AruCoPostEstimationNode(Node):
         name: str | None = None,
     ) -> None:
         super().__init__(name)
+
         self.i_frame = Port(None)
         self.o_pose = Port(np.eye(4, dtype=np.float32))
+        self.o_draw = Port(None)
 
         self._K = camera_matrix.astype(np.float32)
         self._D = dist_coeffs.astype(np.float32)
+
+        self.marker_size = marker_size
 
         half = marker_size / 2.0
 
         # 3D marker corners in marker coordinate frame
         self._obj_pts = np.array(
             [
-                [-half, half, 0.0],
-                [half, half, 0.0],
-                [half, -half, 0.0],
-                [-half, -half, 0.0],
+                [-half, -half, 0.0],  # bottom-left
+                [half, -half, 0.0],  # bottom-right
+                [half, half, 0.0],  # top-right
+                [-half, half, 0.0],  # top-left
             ],
             dtype=np.float32,
         )
@@ -69,6 +73,7 @@ class AruCoPostEstimationNode(Node):
         if frame is None:
             return
 
+        # DEBUG: Check frame size matches calibration
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
 
         corners, ids, _ = self._detector.detectMarkers(gray)
@@ -85,7 +90,7 @@ class AruCoPostEstimationNode(Node):
             img_pts,
             self._K,
             self._D,
-            flags=cv2.SOLVEPNP_IPPE_SQUARE,  # best for planar square
+            flags=cv2.SOLVEPNP_ITERATIVE,  # best for planar square
         )
 
         if not ok:
@@ -98,173 +103,64 @@ class AruCoPostEstimationNode(Node):
         T[:3, :3] = R
         T[:3, 3] = tvec.reshape(3)
 
-        self.o_pose <<= T
+        # Draw visualization
+        frame_draw = frame.copy()
+        cv2.aruco.drawDetectedMarkers(frame_draw, corners, ids)
+        cv2.drawFrameAxes(
+            frame_draw,
+            self._K,
+            self._D,
+            rvec,
+            tvec,
+            self.marker_size * 0.5,
+        )
+        frame_draw = cv2.cvtColor(frame_draw, cv2.COLOR_BGR2RGB)
+        self.o_draw <<= frame_draw
+
+        self.o_pose <<= marker_to_unity_camera_pose(T)
 
 
-class RerunRGBVisNode(Node):
+def invert_se3(T_co: np.ndarray) -> np.ndarray:
     """
-    Logs:
-      - camera/image        -> Pinhole (static) + Image (per-frame)
-      - camera              -> Transform3D (per-frame extrinsics)
-      - camera/pose_axes    -> Arrows3D (static glyph, moved by camera transform)
-      - world/origin_axes   -> Arrows3D (static glyph)
+    Invert an SE(3) transform.
 
-    Also sends a blueprint to show:
-      - a 3D view rooted at /world with eye controls looking at the world origin
-      - a 2D view showing camera/image
+    Args:
+        T_co: (4,4) homogeneous transform (object -> camera)
+
+    Returns:
+        T_oc: (4,4) homogeneous transform (camera -> object)
     """
+    assert T_co.shape == (4, 4)
 
-    i_frame: Port[NDArray]
-    i_pose4x4: Port[NDArray]
+    R = T_co[:3, :3]
+    t = T_co[:3, 3]
 
-    _i: int
+    T_oc = np.eye(4, dtype=T_co.dtype)
+    T_oc[:3, :3] = R.T
+    T_oc[:3, 3] = -R.T @ t
 
-    def __init__(
-        self,
-        # Camera intrinsics (recommended for 3D->2D overlays if you later add projections)
-        resolution: Tuple[int, int],  # (width, height)
-        focal_length: Union[Tuple[float, float], float],  # (fx, fy) or scalar
-        principal_point: Tuple[float, float],  # (cx, cy)
-        # Visualization
-        axis_length: float = 0.1,  # camera local axes length
-        world_axis_length: Optional[
-            float
-        ] = None,  # world origin axes length (defaults to 2x axis_length)
-        # Pose interpretation:
-        # True if T is child-from-parent (world->camera). False if parent-from-child (camera->world).
-        pose_is_child_from_parent: bool = True,
-        # Blueprint / view layout
-        send_blueprint: bool = True,
-        world_view_origin: str = "/world",
-        image_view_origin: str = "camera/image",
-        name: str | None = None,
-    ) -> None:
-        super().__init__(name)
-        self._i = 0
-
-        self.i_frame = Port(None)
-        self.i_pose4x4 = Port(None)
-
-        self._axis_length = float(axis_length)
-        self._world_axis_length = (
-            float(world_axis_length)
-            if world_axis_length is not None
-            else float(axis_length) * 2.0
-        )
-        self._pose_is_child_from_parent = bool(pose_is_child_from_parent)
-
-        # Make navigation nicer
-        rr.log("/", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
-
-        # -------------------------
-        # Static world origin axes
-        # -------------------------
-        WL = self._world_axis_length
-        rr.log(
-            "world/origin_axes",
-            rr.Arrows3D(
-                origins=[[0.0, 0.0, 0.0]] * 3,
-                vectors=[[WL, 0.0, 0.0], [0.0, WL, 0.0], [0.0, 0.0, WL]],
-                colors=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-                labels=["+X", "+Y", "+Z"],
-            ),
-            static=True,
-        )
-
-        # -------------------------
-        # Static camera local axes glyph (moved by `camera` transform)
-        # -------------------------
-        L = self._axis_length
-        rr.log(
-            "camera/pose_axes",
-            rr.Arrows3D(
-                origins=[[0.0, 0.0, 0.0]] * 3,
-                vectors=[[L, 0.0, 0.0], [0.0, L, 0.0], [0.0, 0.0, L]],
-                colors=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-                labels=["+X", "+Y", "+Z"],
-            ),
-            static=True,
-        )
-
-        # -------------------------
-        # Pinhole intrinsics for camera/image
-        # -------------------------
-        w, h = resolution
-        rr.log(
-            image_view_origin,
-            rr.Pinhole(
-                resolution=[w, h],
-                focal_length=focal_length,
-                principal_point=principal_point,
-            ),
-            static=True,
-        )
-
-        # -------------------------
-        # Blueprint: 3D world view + 2D image view
-        # -------------------------
-        if send_blueprint:
-            blueprint = rrb.Blueprint(
-                rrb.Horizontal(
-                    rrb.Spatial3DView(
-                        name="World (fixed)",
-                        origin=world_view_origin,
-                        spatial_information=rrb.SpatialInformation(
-                            show_axes=True,
-                            show_bounding_box=False,
-                        ),
-                        eye_controls=rrb.EyeControls3D(
-                            # tweak these if your scene scale differs
-                            position=(0.5, -0.8, 0.5),
-                            look_target=(0.0, 0.0, 0.0),
-                            eye_up=(0.0, 0.0, 1.0),
-                            speed=5.0,
-                            tracking_entity=None,  # critical: do NOT follow the camera entity
-                        ),
-                    ),
-                    rrb.Spatial2DView(
-                        name="Camera Image",
-                        origin=image_view_origin,
-                    ),
-                ),
-                collapse_panels=False,
-            )
-            rr.send_blueprint(blueprint, make_active=True)
-
-        self._image_path = image_view_origin
-
-    def forward(self) -> None:
-        rgb = ~self.i_frame
-        if rgb is None:
-            return
-
-        rr.set_time("frame_idx", sequence=self._i)
-
-        # Show camera image (2D view)
-        rr.log(self._image_path, rr.Image(rgb, color_model="BGR"))
-
-        # Log camera pose (3D view)
-        T = ~self.i_pose4x4
-        if T is not None:
-            R = T[:3, :3]
-            t = T[:3, 3]
-            rr.log(
-                "camera",
-                rr.Transform3D(
-                    translation=t,
-                    mat3x3=R,
-                    relation=(
-                        rr.TransformRelation.ChildFromParent
-                        if self._pose_is_child_from_parent
-                        else rr.TransformRelation.ParentFromChild
-                    ),
-                ),
-            )
-
-        self._i += 1
+    return T_oc
 
 
-def jpeg_encode_bgr(img_bgr: NDArray, quality: int = 90) -> NDArray:
+def marker_to_unity_camera_pose(T_marker_to_cam_cv: np.ndarray) -> np.ndarray:
+    """
+    Input:  T (4x4) marker->camera in OpenCV coords (x right, y down, z forward)
+    Output: (4x4) camera->world in Unity coords, assuming world == marker frame
+    """
+    T = T_marker_to_cam_cv.astype(np.float32)
+
+    # 1) invert: camera->marker (still in OpenCV axis convention)
+    T_cam_to_marker_cv = invert_se3(T)
+
+    # 2) axis conversion OpenCV -> Unity: flip Y and Z
+    C = np.diag([1.0, -1.0, 1.0, 1.0]).astype(np.float32)
+
+    # camera->world (world == marker) in Unity convention
+    T_cam_to_world_unity = C @ T_cam_to_marker_cv @ C
+    return T_cam_to_world_unity
+
+
+def jpeg_encode_bgr(img_bgr: NDArray, quality: int = 80) -> NDArray:
     """
     img_bgr: uint8 NumPy array in BGR order (OpenCV default), shape (H,W,3) or (H,W)
     returns: JPEG bytes
@@ -295,9 +191,33 @@ class FrameEncoderNode(Node):
 
     def forward(self):
         payload = ~self.i_frame
-        payload = jpeg_encode_bgr(payload)
+        payload = jpeg_encode_bgr(payload, quality=50)
         payload = np.array(payload).tobytes()
         self.o_frame <<= payload
+
+
+class PayloadFactoryNode(Node):
+    i_frame: Port[bytes]
+    i_pose4x4: Port[NDArray]
+
+    o_payload: Port[bytes]
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+
+        self.i_frame = Port(None)
+        self.i_pose4x4 = Port(None)
+        self.o_payload = Port(None)
+
+    def forward(self):
+        b_frame = ~self.i_frame
+
+        T = ~self.i_pose4x4
+        # T_unity = marker_to_unity_camera_pose(T_cv)
+        b_pose4x4 = T.astype(np.float32).tobytes(order="F")
+
+        b_payload = b_pose4x4 + b_frame
+        self.o_payload <<= b_payload
 
 
 def get_graph():
@@ -319,8 +239,8 @@ def get_graph():
             ]
         ]
     )
-    fx, fy = (1143.07, 1143.20)
-    cx, cy = (940.22, 558.98)
+    # fx, fy = (1143.07, 1143.20)
+    # cx, cy = (940.22, 558.98)
 
     g = Graph()
 
@@ -328,14 +248,32 @@ def get_graph():
     g += (cam_node := WebcamNode())
     g += (enc_node := FrameEncoderNode())
     g += (
+        aruco_node := AruCoPostEstimationNode(
+            camera_matrix=camera_matrix,
+            dist_coeffs=distortion_coefficients,
+            marker_size=0.066,
+        )
+    )
+    g += (fac_node := PayloadFactoryNode())
+    g += (
         wss_node := WebSocketServerNode(
             config=WebSocketServerConfig(max_size=0, compression=None)
         )
     )
+    # g += (vis_node := RerunVideoVisNode())
 
     _ = +cam_node.o_frame + (
-        enc_node + (cam_node.o_frame >> enc_node.i_frame)
-        + wss_node + (enc_node.o_frame >> wss_node.i_broadcast_message)
+        aruco_node
+        + (cam_node.o_frame >> aruco_node.i_frame)
+        + enc_node
+        + (cam_node.o_frame >> enc_node.i_frame)
+        + fac_node
+        + (enc_node.o_frame >> fac_node.i_frame)
+        + (aruco_node.o_pose >> fac_node.i_pose4x4)
+        # + vis_node
+        # + (aruco_node.o_draw >> vis_node.i_frame)
+        + wss_node
+        + (fac_node.o_payload >> wss_node.i_broadcast_message)
     )
 
     return g
@@ -347,4 +285,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    # init_rerun_context("Aruco")
     asyncio.run(main())
