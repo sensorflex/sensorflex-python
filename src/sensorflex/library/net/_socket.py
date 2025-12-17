@@ -89,6 +89,8 @@ class WebSocketServerNode(Node):
     i_message: Port[WebSocketMessageEnvelope]
     o_message: Port[WebSocketMessageEnvelope]
 
+    i_broadcast_message: Port[Data]
+
     # Internal states
     _config: WebSocketServerConfig
     _server_op: FutureOp[None]
@@ -110,6 +112,8 @@ class WebSocketServerNode(Node):
         # Ports
         self.i_message = Port(None, self._send_message)
         self.o_message = Port(None)
+
+        self.i_broadcast_message = Port(None, self._broadcast_message)
 
         # Internal async machinery
         self._config = config or WebSocketServerConfig()
@@ -194,6 +198,12 @@ class WebSocketServerNode(Node):
             await conn.send(msg.payload)
         else:
             logger.info(f"Connection closed for {msg.client_id}")
+
+    async def _broadcast_message(self):
+        msg = ~self.i_broadcast_message
+
+        for conn in self._clients.values():
+            await conn.send(msg)
 
     def cancel(self) -> None:
         """Cancel the server task via node API."""
