@@ -12,6 +12,8 @@ from typing import (
     List,
     Iterator,
     Awaitable,
+    Protocol,
+    runtime_checkable,
 )
 from enum import Enum, auto
 
@@ -22,9 +24,6 @@ from typing import Coroutine
 if TYPE_CHECKING:
     from ._graph import Pipeline
     from ._node import Node
-
-TP = TypeVar("TP")
-NP = TypeVar("NP")
 
 
 class GraphPartGroup:
@@ -43,16 +42,33 @@ class GraphPartGroup:
             return GraphPartGroup(self._parts + [items])
 
 
-@dataclass
+T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
+
+
+@runtime_checkable
+class Out(Protocol[T_co]):
+    def __invert__(self) -> T_co: ...
+
+
+@runtime_checkable
+class In(Protocol[T_contra]):
+    def __ilshift__(self, value: T_contra) -> In[T_contra]: ...
+
+
+@dataclass(frozen=True)
 class Edge:
-    src: Port
-    dst: Port
+    src: Out[Any]
+    dst: In[Any]
 
     def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
             return self + items
         else:
             return GraphPartGroup([self, items])
+
+
+TP = TypeVar("TP")
 
 
 class Port(Generic[TP]):
@@ -102,20 +118,22 @@ class Port(Generic[TP]):
 
         return p
 
-    def __pos__(self):
+    def __pos__(self) -> Pipeline:
         return self.get_branched_pipeline()
 
-    def connect(self, other: Port[NP]) -> Edge:
+    def __iadd__(self, others: Node | Edge | GraphPartGroup) -> Port:
+        p = self.get_branched_pipeline()
+        p += others
+        return self
+
+    def connect(self, other: In[TP]) -> Edge:
         return Edge(self, other)
 
-    def __rshift__(self, other: Port[NP]) -> Edge:
+    def __rshift__(self, other: In[TP]) -> Edge:
         return self.connect(other)
 
-    def __lshift__(self, other: Port[NP]) -> Edge:
-        return other.connect(self)
-
-
-T = TypeVar("T")
+    def __lshift__(self, other: Out[TP]) -> Edge:
+        return Edge(other, self)
 
 
 class FutureState(Enum):
@@ -135,6 +153,9 @@ class FutureState(Enum):
 
     # Task was cancelled
     CANCELLED = auto()
+
+
+T = TypeVar("T")
 
 
 class FutureOp(Generic[T]):
