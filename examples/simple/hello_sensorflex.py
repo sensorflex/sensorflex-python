@@ -37,7 +37,7 @@ class PrintNode(Node):
 
 async def main():
     # Define a graph
-    mp = (g := Graph()).main_pipeline
+    mp = (_ := Graph()).main_pipeline
 
     mp += (n1 := ArrayInitNode())
     mp += (n2 := PrintNode())
