@@ -1,57 +1,52 @@
 """Hello SensorFlex, your first example!"""
 
 import asyncio
-import numpy as np
-from numpy.typing import NDArray
 from typing import Any
 
-from sensorflex import Node, Port, Graph
+import numpy as np
+from numpy.typing import NDArray
+
+from sensorflex import Graph, Node, Port
 
 
-class ImageLoadingNode(Node):
-    # path: Port[str] = Port(None)
-    i: Port[int] = Port(0)
-    bgr: Port[NDArray] = Port(None)
+class ArrayInitNode(Node):
+    i_i: Port[int]
+    o_arr: Port[NDArray]
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+        self.i_i = Port(None)
+        self.o_arr = Port(None)
 
     def forward(self):
         # do something with ~self.path
-        x = np.array([3, 2, 1], dtype=np.uint8) + ~self.i
-        x = x.reshape((1, 1, 3))
-        self.bgr <<= x
-
-
-class ImageTransformationNode(Node):
-    bgr: Port[NDArray] = Port(None)
-    rgb: Port[NDArray] = Port(None)
-
-    def forward(self):
-        bgr = ~self.bgr
-        rgb = bgr[:, :, [2, 1, 0]]
-        self.rgb <<= rgb
+        x = np.array([0], dtype=np.uint8) + ~self.i_i
+        self.o_arr <<= x
 
 
 class PrintNode(Node):
-    field: Port[Any] = Port(None)
+    i_field: Port[Any]
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+        self.i_field = Port(None)
 
     def forward(self):
-        print(~self.field)
+        print(f"arr is current at: {~self.i_field}")
 
 
 async def main():
     # Define a graph
     mp = (g := Graph()).main_pipeline
 
-    mp += (n1 := ImageLoadingNode())
-    mp += (n2 := ImageTransformationNode())
-    mp += n1.bgr >> n2.bgr
-
-    mp += (n3 := PrintNode())
-    mp += n3.field << n2.bgr
+    mp += (n1 := ArrayInitNode())
+    mp += (n2 := PrintNode())
+    mp += n1.o_arr >> n2.i_field
 
     # Now execute
     for i in range(5):
-        n1.i <<= i
-        g.run_main_pipeline()
+        n1.i_i <<= i
+        mp.run()
 
 
 if __name__ == "__main__":

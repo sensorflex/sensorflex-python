@@ -163,12 +163,6 @@ class GraphExecMixin:
     def schedule_exec(self, port: Port):
         self._loop.call_soon_threadsafe(self._exec_pipelines, port)
 
-    def run_main_pipeline(self):
-        def _exec():
-            self.main_pipeline.run()
-
-        self._loop.call_soon_threadsafe(_exec)
-
     async def wait_forever(self):
         while True:
             _ = await self._event_queue.get()
@@ -177,7 +171,7 @@ class GraphExecMixin:
         return asyncio.create_task(self.wait_forever())
 
     def run_in_thread(self) -> Thread:
-        t = Thread(target=self.run_main_pipeline)
+        t = Thread(target=self.main_pipeline.run)
         t.start()
         return t
 

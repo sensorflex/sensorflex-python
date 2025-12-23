@@ -1,12 +1,13 @@
 """A simple example for using multiple pipelines in a graph."""
 
-import time
 import asyncio
-import numpy as np
+import time
 from typing import Any, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Graph, Node, Port
 from sensorflex.library.net import WebSocketServerNode
 from sensorflex.utils.logging import configure_default_logging
 
@@ -96,15 +97,15 @@ def get_graph():
     wp += nw.o_message >> nw.i_message
     wp += n3 + (nw.o_message >> n3.field)
 
-    return g
+    return g, mp
 
 
 async def main():
-    g = get_graph()
+    g, mp = get_graph()
     t = g.wait_forever_as_task()
 
     await asyncio.sleep(15)
-    g.run_main_pipeline()
+    mp.run()
 
     t.cancel()
 

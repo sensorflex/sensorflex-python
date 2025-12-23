@@ -1,13 +1,14 @@
 """A simple compute graph example."""
 
-import time
 import asyncio
-import numpy as np
 import multiprocessing as mp
+import time
 from typing import Any, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Graph, Node, Port
 
 
 # Define your nodes
@@ -78,13 +79,13 @@ def get_graph(i):
     mp += (n3 := PrintNode())
     mp += n3.field << n2.bgr
 
-    return g, n1
+    return g, n1, mp
 
 
 async def run(i: int):
-    g, n1 = get_graph(i)
+    g, n1, mp = get_graph(i)
     n1.i <<= i
-    g.run_main_pipeline()
+    mp.run()
 
 
 def worker(i: int):

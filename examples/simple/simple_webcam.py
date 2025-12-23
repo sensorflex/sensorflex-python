@@ -1,11 +1,12 @@
 """A simple compute graph example."""
 
-import cv2
 import asyncio
 from typing import Union
+
+import cv2
 from numpy.typing import NDArray
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Graph, Node, Port
 from sensorflex.library.cv import WebcamNode
 from sensorflex.utils.logging import configure_default_logging
 
