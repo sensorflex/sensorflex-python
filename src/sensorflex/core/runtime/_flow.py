@@ -1,25 +1,25 @@
+"""Library for computation flow management."""
+
 from __future__ import annotations
 
+from asyncio import Task, create_task
 from dataclasses import dataclass
+from enum import Enum, auto
 from threading import Thread
 from typing import (
-    Any,
-    Callable,
-    Generic,
-    TypeVar,
-    Optional,
     TYPE_CHECKING,
-    List,
-    Iterator,
+    Any,
     Awaitable,
+    Callable,
+    Coroutine,
+    Generic,
+    Iterator,
+    List,
+    Optional,
     Protocol,
+    TypeVar,
     runtime_checkable,
 )
-from enum import Enum, auto
-
-from asyncio import create_task, Task
-from typing import Coroutine
-
 
 if TYPE_CHECKING:
     from ._graph import Pipeline
@@ -48,11 +48,21 @@ T_contra = TypeVar("T_contra", contravariant=True)
 
 @runtime_checkable
 class Out(Protocol[T_co]):
+    value: Optional[Any]
+    parent_node: Node
+
+    _is_branched_pipeline_head: bool
+
     def __invert__(self) -> T_co: ...
 
 
 @runtime_checkable
 class In(Protocol[T_contra]):
+    value: Optional[Any]
+    parent_node: Node
+
+    _is_branched_pipeline_head: bool
+
     def __ilshift__(self, value: T_contra) -> In[T_contra]: ...
 
 
@@ -124,6 +134,7 @@ class Port(Generic[TP]):
     def __iadd__(self, others: Node | Edge | GraphPartGroup) -> Port:
         p = self.get_branched_pipeline()
         p += others
+        p.check_edges()
         return self
 
     def connect(self, other: In[TP]) -> Edge:

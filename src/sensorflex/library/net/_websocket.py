@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-from re import Pattern
 from asyncio import Lock
-from uuid import uuid4, UUID
 from dataclasses import dataclass, field
-from typing import Literal, Callable, Sequence, Awaitable
+from re import Pattern
+from typing import Any, Awaitable, Callable, Dict, Literal, Optional, Sequence
+from uuid import UUID, uuid4
 
 from websockets import serve
-from websockets.typing import Data, Origin, Subprotocol
-from websockets.http11 import USER_AGENT, SERVER, Request, Response
-from websockets.datastructures import HeadersLike
+from websockets.asyncio.client import ClientConnection, connect, process_exception
 from websockets.asyncio.server import ServerConnection
-from websockets.asyncio.client import connect, process_exception, ClientConnection
+from websockets.datastructures import HeadersLike
 from websockets.extensions.base import ClientExtensionFactory, ServerExtensionFactory
+from websockets.http11 import SERVER, USER_AGENT, Request, Response
+from websockets.typing import Data, Origin, Subprotocol
 
-from typing import Dict, Optional, Any
-
-from sensorflex.core.runtime import Node, Port, FutureOp, FutureState
+from sensorflex.core.runtime import FutureOp, FutureState, Node, Port
 from sensorflex.utils.logging import get_logger
 
 logger = get_logger("WebSocket")
@@ -342,8 +340,6 @@ class WebSocketClientNode(Node):
         """
         payload = ~self.i_message
 
-        assert payload is not None
-
         if self._conn is not None:
             try:
                 # with Perf("self._conn.send(data)"):
@@ -363,3 +359,27 @@ class WebSocketClientNode(Node):
         """Cancel the client task via node API."""
         if self._client_op is not None:
             self._client_op.cancel()
+
+
+# TODO: probably implement edge op to make this a generalizable design.
+class MessageDistributionNode(Node):
+    i_message: Port[Data]
+    o_str: Port[str]
+    o_bytes: Port[bytes]
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+
+        self.i_message = Port(None)
+        self.o_str = Port(None)
+        self.o_bytes = Port(None)
+
+    def forward(self) -> None:
+        msg = ~self.i_message
+
+        if isinstance(msg, str):
+            self.o_str <<= msg
+        elif isinstance(msg, bytes):
+            self.o_bytes <<= msg
+        else:
+            raise ValueError("Unknown message type.")

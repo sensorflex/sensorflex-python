@@ -1,129 +1,58 @@
 """A simple example for using a distributed graph."""
 
-import cv2
 import asyncio
-import numpy as np
-import rerun as rr
-from typing import Union
 
+import cv2
 from numpy.typing import NDArray
-from sensorflex import Node, Graph, Port
-from sensorflex.library.cv import WebcamNode
+
+from sensorflex import Graph, Node, Port
+from sensorflex.library.cv import (
+    ImageCodec,
+    ImageDecodeNode,
+    ImageEncodeNode,
+    WebcamNode,
+)
 from sensorflex.library.net import (
-    WebSocketServerNode,
+    WebSocketClientConfig,
     WebSocketClientNode,
     WebSocketMessageEnvelope,
-    WebSocketClientConfig,
     WebSocketServerConfig,
+    WebSocketServerNode,
 )
-from sensorflex.library.vis import init_rerun_context
+from sensorflex.library.vis import RerunVideoVisNode, init_rerun_context
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()
 
 
-class RerunRGBVisNode(Node):
-    """
-    Video track handler that logs frames to Rerun.
-    """
+class ServerUnpackNode(Node):
+    i_message: Port[WebSocketMessageEnvelope]
+    o_bytes: Port[bytes]
 
-    i_frame: Port[NDArray]
-
-    _i: int
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._i = 0
-        self.i_frame = Port(None)
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+        self.i_message = Port(None)
+        self.o_bytes = Port(None)
 
     def forward(self) -> None:
-        rgb = ~self.i_frame
-        rr.set_time("frame_idx", sequence=self._i)
-        rr.log(self.name, rr.Image(rgb, color_model="BGR"))
-        self._i += 1
+        msg = ~self.i_message
+        data = msg.payload
+        assert isinstance(data, bytes)
+        self.o_bytes <<= data
 
 
-class VisNode(Node):
-    i_arr: Port[NDArray]
+class RGB2BGRNode(Node):
+    i_img: Port[NDArray]
+    o_img: Port[NDArray]
 
-    def __init__(self, name: Union[str, None] = None) -> None:
+    def __init__(self, name: str | None = None) -> None:
         super().__init__(name)
-        self.i_arr = Port(None)
+        self.i_img = Port(None)
+        self.o_img = Port(None)
 
-    def forward(self):
-        arr = ~self.i_arr
-        cv2.imshow("Print", arr)
-        # t0 = asyncio.get_running_loop().time()
-        cv2.waitKey(1)  # Important for OpenCV GUI.
-        # dt = (asyncio.get_running_loop().time() - t0) * 1000
-        # print(f"opencv took {dt:.4f} ms.")
-
-
-class FrameEncoderNode(Node):
-    i_frame: Port[cv2.typing.MatLike]
-    o_frame: Port[bytes]
-
-    def __init__(self, name: Union[str, None] = None) -> None:
-        super().__init__(name)
-
-        self.i_frame = Port(None)
-        self.o_frame = Port(None)
-
-    def forward(self):
-        payload = ~self.i_frame
-        payload = np.array(payload).tobytes()
-        self.o_frame <<= payload
-
-
-def jpeg_decode_bgr(jpeg_bytes: bytes) -> NDArray:
-    """
-    jpeg_bytes: JPEG-encoded bytes
-    returns: uint8 NumPy array in BGR order (H, W, 3)
-    """
-    buf = np.frombuffer(jpeg_bytes, dtype=np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
-
-    if img is None:
-        raise RuntimeError("cv2.imdecode failed")
-
-    return img
-
-
-def png_decode(png_bytes: bytes, flags=cv2.IMREAD_UNCHANGED) -> NDArray:
-    """
-    png_bytes: PNG-encoded bytes
-    flags:
-      - cv2.IMREAD_UNCHANGED (preserve channels, incl. alpha)
-      - cv2.IMREAD_COLOR
-      - cv2.IMREAD_GRAYSCALE
-    returns: uint8 NumPy array
-    """
-    buf = np.frombuffer(png_bytes, dtype=np.uint8)
-    img = cv2.imdecode(buf, flags)
-
-    if img is None:
-        raise RuntimeError("cv2.imdecode failed")
-
-    return img
-
-
-class FrameDecoderNode(Node):
-    i_frame: Port[WebSocketMessageEnvelope]
-    o_frame: Port[NDArray]
-
-    def __init__(self, name: Union[str, None] = None) -> None:
-        super().__init__(name)
-
-        self.i_frame = Port(None)
-        self.o_frame = Port(None)
-
-    def forward(self):
-        payload = (~self.i_frame).payload
-        assert type(payload) is bytes
-        payload = jpeg_decode_bgr(payload)
-        payload = payload.reshape((1080, 1920, 3))
-
-        self.o_frame <<= payload
+    def forward(self) -> None:
+        img = ~self.i_img
+        self.o_img <<= cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
 def get_graph():
@@ -133,7 +62,7 @@ def get_graph():
     g += (
         (
             c_node := WebSocketClientNode(
-                uri="ws://localhost:8765",
+                uri="ws://localhost:8765",  # Change this.
                 config=WebSocketClientConfig(
                     max_size=None,
                     compression=None,
@@ -141,14 +70,14 @@ def get_graph():
             )
         )
         + (cam_node := WebcamNode())
-        + (e_node := FrameEncoderNode())
+        + (e_node := ImageEncodeNode(ImageCodec.JPEG))
     )
 
-    _ = +cam_node.o_frame + (
-        e_node
-        + (cam_node.o_frame >> e_node.i_frame)
+    cam_node.o_frame += (
+        (cam_node.o_frame >> e_node.i_img)
+        + e_node
+        + (e_node.o_buf >> c_node.i_message)
         + c_node
-        + (e_node.o_frame >> c_node.i_message)
     )
 
     # Run this part on another computer.
@@ -161,15 +90,21 @@ def get_graph():
                 )
             )
         )
-        + (d_node := FrameDecoderNode())
-        + (v_node := RerunRGBVisNode())
+        + (m_node := ServerUnpackNode())
+        + (d_node := ImageDecodeNode(ImageCodec.JPEG))
+        + (t_node := RGB2BGRNode())
+        + (v_node := RerunVideoVisNode())
     )
 
-    _ = +s_node.o_message + (
-        d_node
-        + (s_node.o_message >> d_node.i_frame)
+    s_node.o_message += (
+        (s_node.o_message >> m_node.i_message)
+        + m_node
+        + (m_node.o_bytes >> d_node.i_buf)
+        + d_node
+        + (d_node.o_img >> t_node.i_img)
+        + t_node
+        + (t_node.o_img >> v_node.i_frame)
         + v_node
-        + (d_node.o_frame >> v_node.i_frame)
     )
 
     return g

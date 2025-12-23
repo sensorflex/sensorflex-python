@@ -1,9 +1,11 @@
-from ._socket import (
-    WebSocketClientNode,
+"""libnet export."""
+from ._websocket import (
+    MessageDistributionNode,
     WebSocketClientConfig,
-    WebSocketServerNode,
-    WebSocketServerConfig,
+    WebSocketClientNode,
     WebSocketMessageEnvelope,
+    WebSocketServerConfig,
+    WebSocketServerNode,
 )
 
 __all__ = [
@@ -12,4 +14,5 @@ __all__ = [
     "WebSocketMessageEnvelope",
     "WebSocketClientNode",
     "WebSocketClientConfig",
+    "MessageDistributionNode",
 ]

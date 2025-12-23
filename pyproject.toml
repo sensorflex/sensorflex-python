@@ -9,22 +9,15 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
-libnet = [
-    "websockets (>=15.0.1,<16.0.0)",
-    "msgspec (>=0.20.0,<0.21.0)",
-]
+libnet = ["websockets (>=15.0.1,<16.0.0)", "msgspec (>=0.20.0,<0.21.0)"]
 
-librtc = [
-    "aiortc (>=1.10.0,<2.0.0)",
-    "av (>=13.0.0,<17.0.0)",
-]
+libwebrtc = ["aiortc (>=1.10.0,<2.0.0)", "av (>=13.0.0,<17.0.0)"]
 
 libvis = ["rerun-sdk"]
 
-libcv = [
-    "pillow (>=11.0.0,<13.0.0)",
-    "opencv-python (>=4.12.0.88,<5.0.0.0)",
-]
+libar = ["mediapipe>=0.10.14,<0.11.0"]
+
+libcv = ["pillow (>=11.0.0,<13.0.0)", "opencv-python (>=4.12.0.88,<5.0.0.0)"]
 
 all = [
     "aiortc (>=1.10.0,<2.0.0)",
@@ -39,3 +32,12 @@ all = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pylint (>=4.0.4,<5.0.0) ; python_version >= \"3.10\"",
+    "graphviz (>=0.21,<0.22) ; python_version >= \"3.10\""
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]  # I = import sorting

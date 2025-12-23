@@ -3,7 +3,7 @@
 from typing import Any
 from sensorflex import Node, Port
 
-from ._socket import WebSocketServerNode
+from ._websocket import WebSocketServerNode
 
 
 class TransmitterNode(Node):

@@ -1,3 +1,17 @@
-from ._webcam import WebcamNode, RandImgNode
+"""CV library nodes."""
 
-__all__ = ["WebcamNode", "RandImgNode"]
+from ._webcam import (
+    ImageCodec,
+    ImageDecodeNode,
+    ImageEncodeNode,
+    RandImgNode,
+    WebcamNode,
+)
+
+__all__ = [
+    "WebcamNode",
+    "RandImgNode",
+    "ImageCodec",
+    "ImageEncodeNode",
+    "ImageDecodeNode",
+]

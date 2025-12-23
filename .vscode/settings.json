@@ -5,12 +5,16 @@
         "coeffs",
         "connectionstatechange",
         "datachannels",
+        "frombuffer",
         "iceconnectionstatechange",
+        "imdecode",
+        "IMREAD",
         "imshow",
         "IPPE",
         "Rodrigues",
         "sensorflex",
         "SOLVEPNP",
+        "tobytes",
         "webrtc",
         "Yiqin",
         "Zhao"
@@ -25,5 +29,14 @@
     },
     "[toml]": {
         "editor.formatOnSave": false
+    },
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "always",
+        "source.organizeImports.ruff": "always"
+    },
+    "ruff.fixAll": true,
+    "ruff.organizeImports": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
     }
 }

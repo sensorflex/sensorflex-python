@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 from threading import Thread
-from typing import TypeVar, List, Dict, overload, cast, Callable, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, TypeVar, cast, overload
 
-from ._node import Node
-from ._flow import Edge, Port, GraphPartGroup
 from sensorflex.utils.logging import get_logger
+
+from ._flow import Edge, GraphPartGroup, Port
+from ._node import Node
 
 logger = get_logger("Graph")
 
@@ -50,19 +51,25 @@ class Pipeline:
         self.parent_graph = parent_graph
         self._from_node = from_node
 
-    def add_edge(self, edge: Edge):
-        if (
-            not edge.src._is_branched_pipeline_head
-            and edge.src.parent_node not in self.nodes
-        ):
-            logger.warning(
-                f"Adding an edge from a node that is not part of the pipeline. From: {edge.src.parent_node.name}, To: {edge.dst.parent_node.name}"
-            )
-        if edge.dst.parent_node not in self.nodes:
-            logger.warning(
-                f"Adding an edge to a node that is not part of the pipeline. From: {edge.src.parent_node.name}, To: {edge.dst.parent_node.name}"
-            )
+    def check_edges(self):
+        for edge in self.edges:
+            if (
+                not edge.src._is_branched_pipeline_head
+                and edge.src.parent_node not in self.nodes
+            ):
+                logger.warning(
+                    "Adding an edge from a node that is not part of the pipeline."
+                    + f"From: {edge.src.parent_node.name}, "
+                    + f"To: {edge.dst.parent_node.name}"
+                )
+            if edge.dst.parent_node not in self.nodes:
+                logger.warning(
+                    "Adding an edge to a node that is not part of the pipeline."
+                    + f"From: {edge.src.parent_node.name}, "
+                    + f"To: {edge.dst.parent_node.name}"
+                )
 
+    def add_edge(self, edge: Edge):
         self.edges.append(edge)
 
         parent_node = edge.src.parent_node
@@ -87,7 +94,9 @@ class Pipeline:
             for edge in edges:
                 # Flow data between ports
                 edge.dst.value = edge.src.value
-                self.parent_graph._on_port_change(edge.dst, by_sensorflex=True)
+                self.parent_graph._on_port_change(
+                    cast(Port, edge.dst), by_sensorflex=True
+                )
 
     def add(self, node_or_edge):
         self += node_or_edge

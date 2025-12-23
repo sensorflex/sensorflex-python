@@ -303,7 +303,7 @@ def get_graph():
         )
     )
 
-    _ = +cam_node.o_frame + (
+    cam_node.o_frame += (
         aruco_node
         + (cam_node.o_frame >> aruco_node.i_frame)
         + vis_node

@@ -1,14 +1,15 @@
 """A simple example for using multiple pipelines in a graph."""
 
-import time
 import asyncio
+import json
+import time
 from typing import Any, Union
 
-from sensorflex import Node, Graph, Port
+from sensorflex import Graph, Node, Port
 from sensorflex.library.net import (
-    WebSocketServerNode,
     WebSocketClientNode,
-    WebSocketMessage,
+    WebSocketMessageEnvelope,
+    WebSocketServerNode,
 )
 from sensorflex.utils.logging import configure_default_logging
 
@@ -16,18 +17,19 @@ configure_default_logging()
 
 
 class PrintNode(Node):
-    field: Port[Any]
+    field: Port[WebSocketMessageEnvelope]
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
         self.field = Port(None)
 
     def forward(self):
-        print(~self.field)
+        msg = ~self.field
+        print(msg.payload)
 
 
 class DelayNode(Node):
-    i_value: Port[WebSocketMessage]
+    i_value: Port[WebSocketMessageEnvelope]
     o_value: Port[Any]
 
     def __init__(self, name: Union[str, None] = None) -> None:
@@ -38,8 +40,9 @@ class DelayNode(Node):
     def forward(self):
         time.sleep(0.5)
         msg = ~self.i_value
-        msg.payload["i"] = msg.payload["i"] + 1
-        self.o_value <<= msg.payload
+        msg = json.loads(msg.payload)
+        msg["i"] = msg["i"] + 1
+        self.o_value <<= json.dumps(msg)
 
 
 def get_graph():
@@ -51,14 +54,13 @@ def get_graph():
         + (d_node := DelayNode())
     )
 
-    p = +s_node.o_message
-    p += (
-        p_node
-        + (s_node.o_message >> p_node.field)
-        + d_node
+    s_node.o_message += (
+        (s_node.o_message >> p_node.field)
+        + p_node
         + (s_node.o_message >> d_node.i_value)
-        + c_node
+        + d_node
         + (d_node.o_value >> c_node.i_message)
+        + c_node
     )
 
     return g, c_node
@@ -70,7 +72,7 @@ async def main():
 
     await asyncio.sleep(1)
 
-    c_node.i_message <<= {"Hello": "World", "i": 0}
+    c_node.i_message <<= json.dumps({"Hello": "World", "i": 0})
 
     await asyncio.Future()
     t.cancel()
