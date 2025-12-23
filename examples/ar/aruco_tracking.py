@@ -1,18 +1,35 @@
 """A simple example for using a distributed graph."""
 
 import asyncio
+from typing import Any
 
 import numpy as np
 
-from sensorflex import Graph
-from sensorflex.library.cv import AruCoPostEstimationNode, WebcamNode
-from sensorflex.library.vis import init_rerun_context
+from sensorflex import Graph, Node, Port
+from sensorflex.library.cv import (
+    AruCoPostEstimationNode,
+    PoseKalmanFilterNode,
+    WebcamNode,
+)
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()
+np.set_printoptions(suppress=True)
+
+
+class PrinterNode(Node):
+    i_info: Port[Any]
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+        self.i_info = Port(np.eye(4, dtype=np.float32))
+
+    def forward(self) -> None:
+        print(~self.i_info)
 
 
 def get_graph():
+    # You should change these to your own camera calibration results.
     camera_matrix = np.array(
         [
             [1143.0742696887514, 0.0, 940.2203465406869],
@@ -31,8 +48,8 @@ def get_graph():
             ]
         ]
     )
-    fx, fy = (1143.07, 1143.20)
-    cx, cy = (940.22, 558.98)
+    # fx, fy = (1143.07, 1143.20)
+    # cx, cy = (940.22, 558.98)
 
     g = Graph()
 
@@ -45,8 +62,17 @@ def get_graph():
             marker_size=0.066,
         )
     )
+    g += (kalman_node := PoseKalmanFilterNode())
+    g += (print_node := PrinterNode())
 
-    cam_node.o_frame += aruco_node + (cam_node.o_frame >> aruco_node.i_frame)
+    cam_node.o_frame += (
+        (cam_node.o_frame >> aruco_node.i_frame)
+        + aruco_node
+        + (aruco_node.o_pose >> kalman_node.i_pose4x4)
+        + kalman_node
+        + (kalman_node.o_pose4x4 >> print_node.i_info)
+        + print_node
+    )
 
     return g
 
@@ -57,5 +83,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    init_rerun_context("AruCo Marker Tracking.")
     asyncio.run(main())

@@ -11,6 +11,7 @@
         "IMREAD",
         "imshow",
         "IPPE",
+        "printoptions",
         "Rodrigues",
         "sensorflex",
         "SOLVEPNP",

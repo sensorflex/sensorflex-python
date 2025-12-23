@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from ._flow import Port, Edge, GraphPartGroup
+    from ._flow import Edge, GraphPartGroup, Port
     from ._graph import Graph
 
 
@@ -21,8 +21,7 @@ class Node:
         self.parent_graph = None
         self._ports = {}
 
-    def forward(self) -> None:
-        pass
+    def forward(self) -> None: ...
 
     def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
         from ._flow import GraphPartGroup
