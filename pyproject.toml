@@ -1,6 +1,6 @@
 [project]
 name = "sensorflex"
-version = "0.1.2"
+version = "0.1.3"
 license = "Apache-2.0"
 description = "Modern real-time sensor compute and data management."
 authors = [{ name = "Yiqin Zhao", email = "yzigm@rit.edu" }]
