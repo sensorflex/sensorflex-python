@@ -62,7 +62,14 @@ def get_graph():
             marker_size=0.066,
         )
     )
-    g += (kalman_node := PoseKalmanFilterNode())
+    g += (
+        kalman_node := PoseKalmanFilterNode(
+            pos_meas_std=0.02,  # meters: increase if jittery / decrease if laggy
+            pos_accel_std=2.0,  # m/s^2: increase to follow fast motion better
+            rot_meas_std=0.05,  # increase if rotation jitters
+            rot_accel_std=2.0,  # increase to follow fast rotation better
+        )
+    )
     g += (print_node := PrinterNode())
 
     cam_node.o_frame += (
