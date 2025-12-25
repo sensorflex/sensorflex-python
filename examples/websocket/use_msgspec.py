@@ -94,6 +94,7 @@ async def main():
     g.main_pipeline.run()
 
     # await asyncio.Future()
+    await asyncio.sleep(1)
     t.cancel()
 
 
