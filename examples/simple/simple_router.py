@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any, Union
 
-from sensorflex import Graph, Node, Port, RouterNode
+from sensorflex import Graph, Node, Port
 from sensorflex.library.net import (
     WebSocketClientNode,
     WebSocketMessageEnvelope,
@@ -68,19 +68,14 @@ def get_graph():
         + (p_node := PrintNode())
         + (ep_node := BytesPrintNode())
         + (c_node := WebSocketClientNode())
-        + (router_node := RouterNode(lambda x, t: isinstance(x.payload, t)))
     )
 
-    s_node.o_message += (s_node.o_message >> router_node.i_data) + router_node
-
-    router_node.on(
-        str,
-        lambda o_message: ((o_message >> p_node.field) + p_node),
-    )
-
-    router_node.on(
-        bytes,
-        lambda o_message: ((o_message >> ep_node.field) + ep_node),
+    s_node.o_message.match(
+        lambda v: type(v.payload),
+        {
+            str: ((s_node.o_message >> p_node.field) + p_node),
+            bytes: (s_node.o_message >> ep_node.field) + ep_node,
+        },
     )
 
     return g, c_node

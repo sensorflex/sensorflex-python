@@ -12,6 +12,7 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
+    Dict,
     Generic,
     Iterator,
     List,
@@ -77,6 +78,9 @@ class Edge:
         else:
             return GraphPartGroup([self, items])
 
+    def forward(self):
+        self.dst.value = self.src.value
+
 
 TP = TypeVar("TP")
 
@@ -88,6 +92,7 @@ class Port(Generic[TP]):
     on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
 
     _is_branched_pipeline_head: bool
+    _exec_condition: Callable[[TP], bool] | None = None
 
     def __init__(
         self,
@@ -118,10 +123,20 @@ class Port(Generic[TP]):
 
         g = self.parent_node.parent_graph
         assert g is not None
-        p = Pipeline(g, self.parent_node)
 
-        # The self node should not be automatically added to the pipeline.
-        # p += self.parent_node
+        # Important: need to take out exec condition here.
+        t = self._exec_condition
+
+        def _cond():
+            if t is not None:
+                v = self.value
+                assert v is not None
+                return t(v)
+            return True
+
+        p = Pipeline(g, exec_condition=_cond)
+        self._exec_condition = None
+
         g.add_pipeline(self, p)
 
         self._is_branched_pipeline_head = True
@@ -145,6 +160,28 @@ class Port(Generic[TP]):
 
     def __lshift__(self, other: Out[TP]) -> Edge:
         return Edge(other, self)
+
+    def __getitem__(self, selector: Callable[[TP], bool]) -> Port[TP]:
+        self._exec_condition = selector
+        return self
+
+    def __setitem__(self, selector: Callable[[TP], bool], value) -> Port[TP]:
+        # This is just for passing type checker.
+        return self
+
+    def when(self, selector: Callable[[TP], bool], parts: GraphPartGroup) -> Node:
+        # Allow chaining.
+        self[selector] += parts
+        return self.parent_node
+
+    def match(self, selector: Callable[[TP], Any], cases: Dict[Any, GraphPartGroup]):
+        for case in cases.keys():
+
+            def _cond(v, c=case) -> bool:
+                return selector(v) == c
+
+            self._exec_condition = _cond
+            self += cases[case]
 
 
 class FutureState(Enum):

@@ -41,15 +41,23 @@ class Pipeline:
     edges: List[Edge]
     parent_graph: Graph
 
-    _from_node: Node | None
-    _node_edge_map: Dict[Node, List[Edge]]
+    _instructions: List[Node | Edge]
 
-    def __init__(self, parent_graph: Graph, from_node: Node | None = None) -> None:
+    _node_edge_map: Dict[Node, List[Edge]]
+    _exec_condition: Callable[..., bool] | None = None
+
+    def __init__(
+        self,
+        parent_graph: Graph,
+        exec_condition: Callable | None = None,
+    ) -> None:
         self.nodes = []
         self.edges = []
         self._node_edge_map = {}
         self.parent_graph = parent_graph
-        self._from_node = from_node
+
+        self._instructions = []
+        self._exec_condition = exec_condition
 
     def check_edges(self):
         for edge in self.edges:
@@ -79,24 +87,16 @@ class Pipeline:
             self._node_edge_map[parent_node] = [edge]
 
     def run(self):
-        if self._from_node:
-            self.push_data_for_node(self._from_node)
+        if self._exec_condition is not None:
+            if not self._exec_condition():
+                return
 
-        # from sensorflex.utils.logging import Perf
-        for node in self.nodes:
-            # with Perf(f"[{node.name}] forward."):
-            node.forward()
-
-            self.push_data_for_node(node)
-
-    def push_data_for_node(self, node: Node):
-        if edges := self._node_edge_map.get(node):
-            for edge in edges:
-                # Flow data between ports
-                edge.dst.value = edge.src.value
-                self.parent_graph._on_port_change(
-                    cast(Port, edge.dst), by_sensorflex=True
-                )
+        for i in self._instructions:
+            if isinstance(i, Edge):
+                i.forward()
+                self.parent_graph._on_port_change(cast(Port, i.dst), by_sensorflex=True)
+            elif isinstance(i, Node):
+                i.forward()
 
     def add(self, node_or_edge):
         self += node_or_edge
@@ -114,6 +114,7 @@ class Pipeline:
         if isinstance(items, Edge):
             edge: Edge = items
             self.add_edge(edge)
+            self._instructions.append(edge)
         elif isinstance(items, Node):
             node: Node = items
 
@@ -121,6 +122,7 @@ class Pipeline:
                 node = self.parent_graph.add_node(node)
 
             self.nodes.append(node)
+            self._instructions.append(node)
         elif isinstance(items, GraphPartGroup):
             for v in items:
                 self += v
