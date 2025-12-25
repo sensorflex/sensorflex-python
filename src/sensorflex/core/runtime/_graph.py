@@ -9,10 +9,12 @@ from typing import Any, Awaitable, Callable, Dict, List, TypeVar, cast, overload
 
 from sensorflex.utils.logging import get_logger
 
-from ._flow import Edge, GraphPartGroup, Port
+from ._flow import Edge, Empty, GraphPartGroup, Port
 from ._node import Node
 
 logger = get_logger("Graph")
+
+GraphPart = Empty | Node | Edge
 
 NP = TypeVar("NP", bound=Node)
 
@@ -41,7 +43,7 @@ class Pipeline:
     edges: List[Edge]
     parent_graph: Graph
 
-    _instructions: List[Node | Edge]
+    _instructions: List[GraphPart]
 
     _node_edge_map: Dict[Node, List[Edge]]
     _exec_condition: Callable[..., bool] | None = None
@@ -97,34 +99,38 @@ class Pipeline:
                 self.parent_graph._on_port_change(cast(Port, i.dst), by_sensorflex=True)
             elif isinstance(i, Node):
                 i.forward()
+            else:
+                raise ValueError("Unrecognized graph part type.")
 
     def add(self, node_or_edge):
         self += node_or_edge
 
     @overload
-    def __iadd__(self, items: Node) -> Pipeline: ...
+    def __iadd__(self, item: GraphPart) -> Pipeline: ...
 
     @overload
-    def __iadd__(self, items: Edge) -> Pipeline: ...
+    def __iadd__(self, item: GraphPartGroup) -> Pipeline: ...
 
-    @overload
-    def __iadd__(self, items: GraphPartGroup) -> Pipeline: ...
-
-    def __iadd__(self, items: Node | Edge | GraphPartGroup) -> Pipeline:
-        if isinstance(items, Edge):
-            edge: Edge = items
+    def __iadd__(self, item: GraphPart | GraphPartGroup) -> Pipeline:
+        if isinstance(item, Edge):
+            edge: Edge = item
             self.add_edge(edge)
             self._instructions.append(edge)
-        elif isinstance(items, Node):
-            node: Node = items
+        elif isinstance(item, Node):
+            node: Node = item
 
             if node.parent_graph is None:
                 node = self.parent_graph.add_node(node)
 
             self.nodes.append(node)
             self._instructions.append(node)
-        elif isinstance(items, GraphPartGroup):
-            for v in items:
+
+        elif isinstance(item, Empty):
+            port: Empty = item
+            # TODO: maybe its not a good idea to have Empty.
+
+        elif isinstance(item, GraphPartGroup):
+            for v in item:
                 self += v
 
         return self

@@ -28,15 +28,15 @@ if TYPE_CHECKING:
 
 
 class GraphPartGroup:
-    _parts: List[Node | Edge]
+    _parts: List[Node | Edge | Empty]
 
-    def __init__(self, parts: List[Node | Edge]) -> None:
+    def __init__(self, parts: List[Node | Edge | Empty]) -> None:
         self._parts = parts
 
-    def __iter__(self) -> Iterator[Node | Edge]:
+    def __iter__(self) -> Iterator[Node | Edge | Empty]:
         return iter(self._parts)
 
-    def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
+    def __add__(self, items: Node | Edge | Empty | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
             return GraphPartGroup(self._parts + items._parts)
         else:
@@ -72,6 +72,8 @@ class Edge:
     src: Out[Any]
     dst: In[Any]
 
+    _transform: Callable[[Any], Any] | None = None
+
     def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
             return self + items
@@ -79,7 +81,12 @@ class Edge:
             return GraphPartGroup([self, items])
 
     def forward(self):
-        self.dst.value = self.src.value
+        if self._transform is not None:
+            v = self._transform(self.src.value)
+        else:
+            v = self.src.value
+
+        self.dst.value = v
 
 
 TP = TypeVar("TP")
@@ -169,12 +176,17 @@ class Port(Generic[TP]):
         # This is just for passing type checker.
         return self
 
-    def when(self, selector: Callable[[TP], bool], parts: GraphPartGroup) -> Node:
+    def map(self, func: Callable[[TP], Any]) -> PortView:
+        return PortView(self, func)
+
+    def when(self, selector: Callable[[TP], bool], parts: GraphPartGroup) -> Empty:
         # Allow chaining.
         self[selector] += parts
-        return self.parent_node
+        return Empty()
 
-    def match(self, selector: Callable[[TP], Any], cases: Dict[Any, GraphPartGroup]):
+    def match(
+        self, selector: Callable[[TP], Any], cases: Dict[Any, GraphPartGroup]
+    ) -> Empty:
         for case in cases.keys():
 
             def _cond(v, c=case) -> bool:
@@ -182,6 +194,24 @@ class Port(Generic[TP]):
 
             self._exec_condition = _cond
             self += cases[case]
+
+        return Empty()
+
+
+class Empty:
+    pass
+
+
+class PortView(Generic[TP]):
+    def __init__(self, host: Port, transform_func: Callable[[TP], Any]) -> None:
+        self.host = host
+        self.transform_func = transform_func
+
+    def connect(self, other: In[TP]) -> Edge:
+        return Edge(self.host, other, self.transform_func)
+
+    def __rshift__(self, other: In[TP]) -> Edge:
+        return self.connect(other)
 
 
 class FutureState(Enum):
