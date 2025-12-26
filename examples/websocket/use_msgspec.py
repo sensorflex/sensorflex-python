@@ -1,7 +1,7 @@
 """A simple example for using multiple pipelines in a graph."""
 
 import asyncio
-from typing import List, Union
+from typing import List, Union, cast
 
 import msgspec
 
@@ -40,7 +40,7 @@ class PrintUserNode(Node):
 
 
 class PrintPoseNode(Node):
-    i_pose: Port[User]
+    i_pose: Port[Pose]
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
@@ -67,14 +67,13 @@ def get_graph():
     g.main_pipeline += encoder_node + (encoder_node.o_bytes >> c_node.i_message)
 
     s_node.o_message += (
-        (s_node.o_message.map(lambda x: x.payload) >> decoder_node.i_bytes)
+        (s_node.o_message.map(lambda x: cast(bytes, x.payload)) >> decoder_node.i_bytes)
         + decoder_node
-        + decoder_node.o_data.match(
-            lambda v: type(v),
-            {
-                User: ((decoder_node.o_data >> pu_node.i_user) + pu_node),
-                Pose: (decoder_node.o_data >> pp_node.i_pose) + pp_node,
-            },
+        + decoder_node.o_data.isinstance(
+            User, lambda o_data: (o_data >> pu_node.i_user) + pu_node
+        )
+        + decoder_node.o_data.isinstance(
+            Pose, lambda o_data: (o_data >> pp_node.i_pose) + pp_node
         )
     )
 

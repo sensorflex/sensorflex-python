@@ -62,22 +62,23 @@ class Pipeline:
         self._exec_condition = exec_condition
 
     def check_edges(self):
-        for edge in self.edges:
-            if (
-                not edge.src._is_branched_pipeline_head
-                and edge.src.parent_node not in self.nodes
-            ):
-                logger.warning(
-                    "Adding an edge from a node that is not part of the pipeline."
-                    + f"From: {edge.src.parent_node.name}, "
-                    + f"To: {edge.dst.parent_node.name}"
-                )
-            if edge.dst.parent_node not in self.nodes:
-                logger.warning(
-                    "Adding an edge to a node that is not part of the pipeline."
-                    + f"From: {edge.src.parent_node.name}, "
-                    + f"To: {edge.dst.parent_node.name}"
-                )
+        # for edge in self.edges:
+        #     if (
+        #         not edge.src._is_branched_pipeline_head
+        #         and edge.src.parent_node not in self.nodes
+        #     ):
+        #         logger.warning(
+        #             "Adding an edge from a node that is not part of the pipeline."
+        #             + f"From: {edge.src.parent_node.name}, "
+        #             + f"To: {edge.dst.parent_node.name}"
+        #         )
+        #     if edge.dst.parent_node not in self.nodes:
+        #         logger.warning(
+        #             "Adding an edge to a node that is not part of the pipeline."
+        #             + f"From: {edge.src.parent_node.name}, "
+        #             + f"To: {edge.dst.parent_node.name}"
+        #         )
+        pass
 
     def add_edge(self, edge: Edge):
         self.edges.append(edge)

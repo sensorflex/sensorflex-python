@@ -4,7 +4,6 @@ from ._flow import (
     FutureOp,
     FutureState,
     Port,
-    PortView,
     ThreadOp,
     ThreadState,
 )
@@ -14,7 +13,6 @@ from ._node import Node, RouterNode
 __all__ = [
     "Edge",
     "Empty",
-    "PortView",
     "Graph",
     "Node",
     "RouterNode",

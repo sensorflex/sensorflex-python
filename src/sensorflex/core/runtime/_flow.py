@@ -48,31 +48,27 @@ T_contra = TypeVar("T_contra", contravariant=True)
 
 
 @runtime_checkable
-class Out(Protocol[T_co]):
+class InPort(Protocol[T_contra]):
     value: Optional[Any]
     parent_node: Node
 
-    _is_branched_pipeline_head: bool
-
-    def __invert__(self) -> T_co: ...
+    def __lshift__(self, other: OutPort[T_contra]) -> Edge: ...
 
 
 @runtime_checkable
-class In(Protocol[T_contra]):
+class OutPort(Protocol[T_co]):
     value: Optional[Any]
     parent_node: Node
 
-    _is_branched_pipeline_head: bool
+    _edge_transforms: List[Callable[[Any], Any]]
 
-    def __ilshift__(self, value: T_contra) -> In[T_contra]: ...
+    def __rshift__(self, other: InPort[T_co]) -> Edge: ...
 
 
 @dataclass(frozen=True)
 class Edge:
-    src: Out[Any]
-    dst: In[Any]
-
-    _transform: Callable[[Any], Any] | None = None
+    src: OutPort[Any]
+    dst: InPort[Any]
 
     def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
@@ -81,15 +77,14 @@ class Edge:
             return GraphPartGroup([self, items])
 
     def forward(self):
-        if self._transform is not None:
-            v = self._transform(self.src.value)
-        else:
-            v = self.src.value
-
+        v = self.src.value
+        for t in self.src._edge_transforms:
+            v = t(v)
         self.dst.value = v
 
 
 TP = TypeVar("TP")
+TM = TypeVar("TM")
 
 
 class Port(Generic[TP]):
@@ -101,6 +96,8 @@ class Port(Generic[TP]):
     _is_branched_pipeline_head: bool
     _exec_condition: Callable[[TP], bool] | None = None
 
+    _edge_transforms: List[Callable[[Any], Any]]
+
     def __init__(
         self,
         value: Optional[TP],
@@ -109,6 +106,7 @@ class Port(Generic[TP]):
         self.value = value
         self.on_change = on_change
         self._is_branched_pipeline_head = False
+        self._edge_transforms = []
 
     def __ilshift__(self, value: TP) -> Port[TP]:
         """port <<= value: set values of a port."""
@@ -159,13 +157,13 @@ class Port(Generic[TP]):
         p.check_edges()
         return self
 
-    def connect(self, other: In[TP]) -> Edge:
+    def connect(self, other: InPort[TP]) -> Edge:
         return Edge(self, other)
 
-    def __rshift__(self, other: In[TP]) -> Edge:
+    def __rshift__(self, other: InPort[TP]) -> Edge:
         return self.connect(other)
 
-    def __lshift__(self, other: Out[TP]) -> Edge:
+    def __lshift__(self, other: OutPort[TP]) -> Edge:
         return Edge(other, self)
 
     def __getitem__(self, selector: Callable[[TP], bool]) -> Port[TP]:
@@ -176,8 +174,9 @@ class Port(Generic[TP]):
         # This is just for passing type checker.
         return self
 
-    def map(self, func: Callable[[TP], Any]) -> PortView:
-        return PortView(self, func)
+    def map(self, func: Callable[[TP], TM]) -> Port[TM]:
+        self._edge_transforms.append(func)
+        return self  # type: ignore
 
     def when(self, selector: Callable[[TP], bool], parts: GraphPartGroup) -> Empty:
         # Allow chaining.
@@ -197,21 +196,20 @@ class Port(Generic[TP]):
 
         return Empty()
 
+    def isinstance(
+        self, data_type: type[TM], branch_func: Callable[[Port[TM]], GraphPartGroup]
+    ) -> Empty:
+        def _cond(v, t=data_type) -> bool:
+            return isinstance(v, t)
+
+        self._exec_condition = _cond
+        self += branch_func(self)  # type: ignore
+
+        return Empty()
+
 
 class Empty:
     pass
-
-
-class PortView(Generic[TP]):
-    def __init__(self, host: Port, transform_func: Callable[[TP], Any]) -> None:
-        self.host = host
-        self.transform_func = transform_func
-
-    def connect(self, other: In[TP]) -> Edge:
-        return Edge(self.host, other, self.transform_func)
-
-    def __rshift__(self, other: In[TP]) -> Edge:
-        return self.connect(other)
 
 
 class FutureState(Enum):

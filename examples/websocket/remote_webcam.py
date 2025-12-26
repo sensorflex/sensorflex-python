@@ -98,6 +98,7 @@ def get_graph():
 
     s_node.o_message += (
         (s_node.o_message >> m_node.i_message)
+        # + (s_node.o_message >> d_node.i_buf)
         + m_node
         + (m_node.o_bytes >> d_node.i_buf)
         + d_node
