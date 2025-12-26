@@ -141,7 +141,7 @@ class Pipeline:
             self._instructions.append(node)
 
         elif isinstance(item, Empty):
-            port: Empty = item
+            _: Empty = item
             # TODO: maybe its not a good idea to have Empty.
 
         elif isinstance(item, Block):
