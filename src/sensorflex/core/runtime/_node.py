@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
-    from ._flow import Edge, GraphPartGroup, Port
+    from ._flow import GraphPart, GraphPartGroup, Port
     from ._graph import Graph
 
 
@@ -23,11 +23,13 @@ class Node:
 
     def forward(self) -> None: ...
 
-    def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
+    def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
         from ._flow import GraphPartGroup
 
         if isinstance(items, GraphPartGroup):
-            return self + items
+            parts = items._parts
+            parts = [self] + parts
+            return GraphPartGroup(parts)  # type: ignore
         else:
             return GraphPartGroup([self, items])
 

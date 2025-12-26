@@ -28,15 +28,15 @@ if TYPE_CHECKING:
 
 
 class GraphPartGroup:
-    _parts: List[Node | Edge | Empty]
+    _parts: List[GraphPart]
 
-    def __init__(self, parts: List[Node | Edge | Empty]) -> None:
+    def __init__(self, parts: List[GraphPart]) -> None:
         self._parts = parts
 
-    def __iter__(self) -> Iterator[Node | Edge | Empty]:
+    def __iter__(self) -> Iterator[GraphPart]:
         return iter(self._parts)
 
-    def __add__(self, items: Node | Edge | Empty | GraphPartGroup) -> GraphPartGroup:
+    def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
             return GraphPartGroup(self._parts + items._parts)
         else:
@@ -66,6 +66,11 @@ class OutPort(Protocol[T_co]):
     def __rshift__(self, other: InPort[T_co]) -> Edge: ...
 
 
+class Empty:
+    def forward(self):
+        pass
+
+
 @dataclass(frozen=True)
 class Edge:
     src: OutPort[Any]
@@ -84,6 +89,20 @@ class Edge:
         self.dst.value = v
 
 
+@dataclass(frozen=True)
+class Block:
+    instructions: GraphPartGroup
+    condition: Callable | None = None
+
+    def forward(self):
+        for i in self.instructions:
+            i.forward()
+
+
+if TYPE_CHECKING:
+    GraphPart = Empty | Node | Edge | Block
+
+
 TP = TypeVar("TP")
 TM = TypeVar("TM")
 
@@ -95,7 +114,6 @@ class Port(Generic[TP]):
     on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
 
     _is_branched_pipeline_head: bool
-    _exec_condition: Callable[[TP], bool] | None = None
 
     _edge_transforms: List[Callable[[Any], Any]]
 
@@ -130,19 +148,7 @@ class Port(Generic[TP]):
         g = self.parent_node.parent_graph
         assert g is not None
 
-        # Important: need to take out exec condition here.
-        t = self._exec_condition
-
-        def _cond():
-            if t is not None:
-                v = self.value
-                assert v is not None
-                return t(v)
-            return True
-
-        p = Pipeline(g, exec_condition=_cond)
-        self._exec_condition = None
-
+        p = Pipeline(g)
         g.add_pipeline(self, p)
 
         self._is_branched_pipeline_head = True
@@ -167,50 +173,37 @@ class Port(Generic[TP]):
     def __lshift__(self, other: OutPort[TP]) -> Edge:
         return Edge(other, self)
 
-    def __getitem__(self, selector: Callable[[TP], bool]) -> Port[TP]:
-        self._exec_condition = selector
-        return self
-
-    def __setitem__(self, selector: Callable[[TP], bool], value) -> Port[TP]:
-        # This is just for passing type checker.
-        return self
-
     def map(self, func: Callable[[TP], TM]) -> Port[TM]:
         self._edge_transforms.append(func)
         return self  # type: ignore
 
-    def when(self, selector: Callable[[TP], bool], parts: GraphPartGroup) -> Empty:
-        # Allow chaining.
-        self[selector] += parts
-        return Empty()
-
     def match(
-        self, selector: Callable[[TP], Any], cases: Dict[Any, GraphPartGroup]
-    ) -> Empty:
-        for case in cases.keys():
+        self,
+        func: Callable[[TP], Any],
+        branches: Dict[Any, GraphPartGroup],
+    ) -> GraphPartGroup:
+        results = []
+        for k in branches.keys():
 
-            def _cond(v, c=case) -> bool:
-                return selector(v) == c
+            def cond(k=k):
+                v = self.value
+                assert v is not None
+                return func(v) == k
 
-            self._exec_condition = _cond
-            self += cases[case]
+            results.append(Block(branches[k], condition=cond))
 
-        return Empty()
+        return GraphPartGroup(results)
 
     def isinstance(
         self, data_type: type[TM], branch_func: Callable[[Port[TM]], GraphPartGroup]
-    ) -> Empty:
-        def _cond(v, t=data_type) -> bool:
-            return isinstance(v, t)
+    ) -> Block:
+        # Important: avoid binding self.value at definition time.
+        def cond(t=data_type):
+            return isinstance(self.value, t)
 
-        self._exec_condition = _cond
-        self += branch_func(self)  # type: ignore
+        group = branch_func(self)  # type: ignore
 
-        return Empty()
-
-
-class Empty:
-    pass
+        return Block(group, condition=cond)
 
 
 class FutureState(Enum):

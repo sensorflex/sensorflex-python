@@ -5,16 +5,28 @@ from __future__ import annotations
 import asyncio
 import inspect
 from threading import Thread
-from typing import Any, Awaitable, Callable, Dict, List, TypeVar, cast, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    TypeVar,
+    cast,
+    overload,
+)
 
 from sensorflex.utils.logging import get_logger
 
-from ._flow import Edge, Empty, GraphPartGroup, Port
+from ._flow import Block, Edge, Empty, GraphPartGroup, Port
 from ._node import Node
+
+if TYPE_CHECKING:
+    from ._flow import GraphPart
 
 logger = get_logger("Graph")
 
-GraphPart = Empty | Node | Edge
 
 NP = TypeVar("NP", bound=Node)
 
@@ -99,6 +111,9 @@ class Pipeline:
                 self.parent_graph._on_port_change(cast(Port, i.dst), by_sensorflex=True)
             elif isinstance(i, Node):
                 i.forward()
+            elif isinstance(i, Block):
+                if i.condition is None or i.condition():
+                    i.forward()
             else:
                 raise ValueError("Unrecognized graph part type.")
 
@@ -128,6 +143,9 @@ class Pipeline:
         elif isinstance(item, Empty):
             port: Empty = item
             # TODO: maybe its not a good idea to have Empty.
+
+        elif isinstance(item, Block):
+            self._instructions.append(item)
 
         elif isinstance(item, GraphPartGroup):
             for v in item:

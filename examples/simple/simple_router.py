@@ -1,98 +1,81 @@
 """A simple example for using multiple pipelines in a graph."""
 
 import asyncio
-import json
-import time
-from typing import Any, Union
+from typing import Union
 
 from sensorflex import Graph, Node, Port
-from sensorflex.library.net import (
-    WebSocketClientNode,
-    WebSocketMessageEnvelope,
-    WebSocketServerNode,
-)
 from sensorflex.utils.logging import configure_default_logging
 
 configure_default_logging()
 
 
-class BytesPrintNode(Node):
-    field: Port[WebSocketMessageEnvelope]
+class PrintGreaterThan10Node(Node):
+    i_number: Port[int]
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
-        self.field = Port(None)
+        self.i_number = Port(None)
 
     def forward(self):
-        msg = ~self.field
-        msg = msg.payload
-        assert isinstance(msg, bytes)
-        print(f"Received bytes: {msg}")
+        print(f">10: {~self.i_number}")
 
 
-class PrintNode(Node):
-    field: Port[WebSocketMessageEnvelope]
+class PrintLEQThan10Node(Node):
+    i_number: Port[int]
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
-        self.field = Port(None)
+        self.i_number = Port(None)
 
     def forward(self):
-        msg = ~self.field
-        msg = msg.payload
-        assert isinstance(msg, str)
-        print(f"Received text: {msg}")
+        print(f"<=10: {~self.i_number}")
 
 
-class DelayNode(Node):
-    i_value: Port[WebSocketMessageEnvelope]
-    o_value: Port[Any]
+class NumberGeneratorNode(Node):
+    o_number: Port[int]
+
+    _i: int
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
-        self.i_value = Port(None)
-        self.o_value = Port(None)
+        self.o_number = Port(None)
+        self._i = 0
 
     def forward(self):
-        time.sleep(0.5)
-        msg = ~self.i_value
-        msg = json.loads(msg.payload)
-        msg["i"] = msg["i"] + 1
-        self.o_value <<= json.dumps(msg)
+        self.o_number <<= self._i
+        self._i += 5
 
 
 def get_graph():
     g = Graph()
     g += (
-        (s_node := WebSocketServerNode())
-        + (p_node := PrintNode())
-        + (ep_node := BytesPrintNode())
-        + (c_node := WebSocketClientNode())
+        (n_node := NumberGeneratorNode())
+        + (pleq_node := PrintLEQThan10Node())
+        + (pgt_node := PrintGreaterThan10Node())
     )
 
-    s_node.o_message.match(
-        lambda v: type(v.payload),
+    g.main_pipeline += n_node + n_node.o_number.match(
+        lambda v: v <= 10,
         {
-            str: ((s_node.o_message >> p_node.field) + p_node),
-            bytes: (s_node.o_message >> ep_node.field) + ep_node,
+            True: ((n_node.o_number >> pleq_node.i_number) + pleq_node),
+            False: (n_node.o_number >> pgt_node.i_number) + pgt_node,
         },
     )
 
-    return g, c_node
+    return g
 
 
 async def main():
-    g, c_node = get_graph()
+    g = get_graph()
     t = g.wait_forever_as_task()
 
+    for _ in range(20):
+        g.main_pipeline.run()
+        await asyncio.sleep(1)
+
+    # await asyncio.Future()
     await asyncio.sleep(1)
-
-    c_node.i_message <<= json.dumps({"Hello": "World", "i": 0})
-
-    await asyncio.sleep(1)
-    c_node.i_message <<= bytes([0, 1, 2])
-
-    await asyncio.Future()
+    print("Exit.")
     t.cancel()
 
 
