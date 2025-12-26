@@ -60,6 +60,7 @@ class OutPort(Protocol[T_co]):
     value: Optional[Any]
     parent_node: Node
 
+    _is_branched_pipeline_head: bool
     _edge_transforms: List[Callable[[Any], Any]]
 
     def __rshift__(self, other: InPort[T_co]) -> Edge: ...
