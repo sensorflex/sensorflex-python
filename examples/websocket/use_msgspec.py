@@ -16,6 +16,9 @@ from sensorflex.utils.logging import configure_default_logging
 configure_default_logging()
 
 
+# ############################################################################
+# Define your data models here.
+# ############################################################################
 class User(msgspec.Struct):
     id: int
     name: str
@@ -27,6 +30,9 @@ class Pose(msgspec.Struct):
     rotation: tuple[float, float, float, float]  # quaternion
 
 
+# ############################################################################
+# Custom nodes.
+# ############################################################################
 class PrintUserNode(Node):
     i_user: Port[User]
 
@@ -92,8 +98,8 @@ async def main():
     e_node.i_data <<= User(0, "John", [1, 2, 3])
     g.main_pipeline.run()
 
-    # await asyncio.Future()
-    await asyncio.sleep(1)
+    await asyncio.Future()
+    # await asyncio.sleep(1)
     t.cancel()
 
 
