@@ -105,17 +105,22 @@ class Pipeline:
             if not self._exec_condition():
                 return
 
-        for i in self._instructions:
-            if isinstance(i, Edge):
-                i.forward()
-                self.parent_graph._on_port_change(cast(Port, i.dst), by_sensorflex=True)
-            elif isinstance(i, Node):
-                i.forward()
-            elif isinstance(i, Block):
-                if i.condition is None or i.condition():
+        def _exec(instructions: List[GraphPart]):
+            for i in instructions:
+                if isinstance(i, Edge):
                     i.forward()
-            else:
-                raise ValueError("Unrecognized graph part type.")
+                    self.parent_graph._on_port_change(
+                        cast(Port, i.dst), by_sensorflex=True
+                    )
+                elif isinstance(i, Node):
+                    i.forward()
+                elif isinstance(i, Block):
+                    if i.condition is None or i.condition():
+                        _exec(i.instructions._parts)
+                else:
+                    raise ValueError("Unrecognized graph part type.")
+
+        _exec(self._instructions)
 
     def add(self, node_or_edge):
         self += node_or_edge

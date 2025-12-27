@@ -61,7 +61,6 @@ class OutPort(Protocol[T_co]):
     parent_node: Node
 
     _is_branched_pipeline_head: bool
-    _edge_transforms: List[Callable[[Any], Any]]
 
     def __rshift__(self, other: InPort[T_co]) -> Edge: ...
 
@@ -84,8 +83,6 @@ class Edge:
 
     def forward(self):
         v = self.src.value
-        for t in self.src._edge_transforms:
-            v = t(v)
         self.dst.value = v
 
 
@@ -107,6 +104,47 @@ TP = TypeVar("TP")
 TM = TypeVar("TM")
 
 
+class PortView(OutPort, Generic[TP]):
+    host: Port[Any] | PortView[Any]
+    view_transform: Callable[[Any], TP]
+
+    parent_node: Node
+    _is_branched_pipeline_head: bool
+
+    def __init__(
+        self, host: Port[Any] | PortView[Any], view_transform: Callable[[Any], TP]
+    ) -> None:
+        super().__init__()
+        self.host = host
+        self.view_transform = view_transform
+
+        self.parent_node = host.parent_node
+        self._is_branched_pipeline_head = host._is_branched_pipeline_head
+
+    @property
+    def value(self) -> TP:
+        t = self.host.value
+        assert t is not None
+        t = self.view_transform(t)
+        return t
+
+    def connect(self, other: InPort[TP]) -> Edge:
+        return Edge(self, other)
+
+    def __rshift__(self, other: InPort[TP]) -> Edge:
+        return self.connect(other)
+
+    def print(self) -> PortView[TP]:
+        def t(v):
+            print(self.value)
+            return v
+
+        return PortView(self, t)
+
+    def map(self, func: Callable[[TP], TM]) -> PortView[TM]:
+        return PortView(self, func)
+
+
 class Port(Generic[TP]):
     value: Optional[TP]
     parent_node: Node
@@ -114,8 +152,6 @@ class Port(Generic[TP]):
     on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
 
     _is_branched_pipeline_head: bool
-
-    _edge_transforms: List[Callable[[Any], Any]]
 
     def __init__(
         self,
@@ -125,7 +161,6 @@ class Port(Generic[TP]):
         self.value = value
         self.on_change = on_change
         self._is_branched_pipeline_head = False
-        self._edge_transforms = []
 
     def __ilshift__(self, value: TP) -> Port[TP]:
         """port <<= value: set values of a port."""
@@ -173,9 +208,15 @@ class Port(Generic[TP]):
     def __lshift__(self, other: OutPort[TP]) -> Edge:
         return Edge(other, self)
 
-    def map(self, func: Callable[[TP], TM]) -> Port[TM]:
-        self._edge_transforms.append(func)
-        return self  # type: ignore
+    def print(self) -> PortView[TP]:
+        def t(v):
+            print(self.value)
+            return v
+
+        return PortView(self, t)
+
+    def map(self, func: Callable[[TP], TM]) -> PortView[TM]:
+        return PortView(self, func)
 
     def match(
         self,
