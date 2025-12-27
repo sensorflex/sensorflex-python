@@ -75,9 +75,11 @@ class Edge:
     src: OutPort[Any]
     dst: InPort[Any]
 
-    def __add__(self, items: Node | Edge | GraphPartGroup) -> GraphPartGroup:
+    def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
-            return self + items
+            parts = items._parts
+            parts = [self] + parts
+            return GraphPartGroup(parts)  # type: ignore
         else:
             return GraphPartGroup([self, items])
 
@@ -90,6 +92,14 @@ class Edge:
 class Block:
     instructions: GraphPartGroup
     condition: Callable | None = None
+
+    def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
+        if isinstance(items, GraphPartGroup):
+            parts = items._parts
+            parts = [self] + parts
+            return GraphPartGroup(parts)  # type: ignore
+        else:
+            return GraphPartGroup([self, items])
 
     def forward(self):
         for i in self.instructions:
@@ -144,6 +154,17 @@ class PortView(OutPort, Generic[TP]):
     def map(self, func: Callable[[TP], TM]) -> PortView[TM]:
         return PortView(self, func)
 
+    def isinstance(
+        self, data_type: type[TM], branch_func: Callable[[Port[TM]], GraphPartGroup]
+    ) -> Block:
+        # Important: avoid binding self.value at definition time.
+        def cond(t=data_type):
+            return isinstance(self.value, t)
+
+        group = branch_func(self)  # type: ignore
+
+        return Block(group, condition=cond)
+
 
 class Port(Generic[TP]):
     value: Optional[TP]
@@ -193,7 +214,11 @@ class Port(Generic[TP]):
     def __pos__(self) -> Pipeline:
         return self.get_branched_pipeline()
 
-    def __iadd__(self, others: Node | Edge | GraphPartGroup) -> Port:
+    def add_pipeline(self, others: GraphPart | GraphPartGroup) -> Port:
+        self += others
+        return self
+
+    def __iadd__(self, others: GraphPart | GraphPartGroup) -> Port:
         p = self.get_branched_pipeline()
         p += others
         p.check_edges()

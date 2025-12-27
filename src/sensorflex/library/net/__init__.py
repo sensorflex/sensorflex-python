@@ -3,6 +3,7 @@
 from ._distributed import (
     MessagePackDecoder,
     MessagePackEncoder,
+    get_msgpack_coder_transforms,
     get_msgpack_encoder_decoder_nodes,
 )
 from ._websocket import (
@@ -18,6 +19,7 @@ __all__ = [
     "MessagePackDecoder",
     "MessagePackEncoder",
     "get_msgpack_encoder_decoder_nodes",
+    "get_msgpack_coder_transforms",
     "WebSocketServerNode",
     "WebSocketServerConfig",
     "WebSocketMessageEnvelope",

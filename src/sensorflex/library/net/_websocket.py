@@ -5,7 +5,17 @@ from __future__ import annotations
 from asyncio import Lock
 from dataclasses import dataclass, field
 from re import Pattern
-from typing import Any, Awaitable, Callable, Dict, Literal, Optional, Sequence
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Generic,
+    Literal,
+    Optional,
+    Sequence,
+    TypeVar,
+)
 from uuid import UUID, uuid4
 
 from websockets import serve
@@ -72,10 +82,13 @@ class WebSocketServerConfig:
     kwargs: dict[str, Any] = field(default_factory=dict)
 
 
+T = TypeVar("T")
+
+
 @dataclass
-class WebSocketMessageEnvelope:
+class WebSocketMessageEnvelope(Generic[T]):
     client_id: UUID
-    payload: Data
+    payload: T
 
 
 class WebSocketServerNode(Node):
@@ -84,8 +97,8 @@ class WebSocketServerNode(Node):
     port: int
 
     # Output ports
-    i_message: Port[WebSocketMessageEnvelope]
-    o_message: Port[WebSocketMessageEnvelope]
+    i_message: Port[WebSocketMessageEnvelope[Data]]
+    o_message: Port[WebSocketMessageEnvelope[Data]]
 
     i_broadcast_message: Port[Data]
 
