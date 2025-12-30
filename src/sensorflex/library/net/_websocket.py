@@ -96,11 +96,12 @@ class WebSocketServerNode(Node):
     host: str
     port: int
 
-    # Output ports
-    i_message: Port[WebSocketMessageEnvelope[Data]]
-    o_message: Port[WebSocketMessageEnvelope[Data]]
-
+    # Input ports
+    i_message: Port[Data, UUID]
     i_broadcast_message: Port[Data]
+
+    # Output ports
+    o_message: Port[Data, UUID]
 
     # Internal states
     _config: WebSocketServerConfig
@@ -197,18 +198,19 @@ class WebSocketServerNode(Node):
 
         try:
             async for msg in conn:
-                self.o_message <<= WebSocketMessageEnvelope(new_conn_id, msg)
+                self.o_message <<= (msg, new_conn_id)
         finally:
             del self._clients[new_conn_id]
 
     async def _send_message(self):
         msg = ~self.i_message
+        client_id = self.i_message.meta
 
-        if msg.client_id in self._clients:
-            conn = self._clients[msg.client_id]
-            await conn.send(msg.payload)
+        if client_id in self._clients:
+            conn = self._clients[client_id]
+            await conn.send(msg)
         else:
-            logger.info(f"Connection closed for {msg.client_id}")
+            logger.info(f"Connection closed for {client_id}")
 
     async def _broadcast_message(self):
         msg = ~self.i_broadcast_message
@@ -259,7 +261,6 @@ class WebSocketClientNode(Node):
     # Internal state
     _client_op: FutureOp[None]
     _conn: Optional[ClientConnection]
-    _client_id: UUID
 
     _send_lock: Lock
 
@@ -275,9 +276,6 @@ class WebSocketClientNode(Node):
 
         # Default configuration; can be overridden by the graph
         self.uri = uri
-
-        # This client's ID (used in WebSocketMessage.client_id)
-        self._client_id = uuid4()
 
         # Ports
         # i_message writes trigger _send_message (async-safe via graph helper)

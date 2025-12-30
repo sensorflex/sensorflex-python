@@ -13,14 +13,15 @@ from typing import (
     Callable,
     Coroutine,
     Dict,
-    Generic,
     Iterator,
     List,
     Optional,
     Protocol,
-    TypeVar,
+    Tuple,
     runtime_checkable,
 )
+
+from typing_extensions import Generic, TypeVar
 
 if TYPE_CHECKING:
     from ._graph import Pipeline
@@ -103,26 +104,28 @@ class Block:
 
     def forward(self):
         for i in self.instructions:
+            if isinstance(i, PortView):
+                continue
+
             i.forward()
 
 
-if TYPE_CHECKING:
-    GraphPart = Empty | Node | Edge | Block
-
-
 TP = TypeVar("TP")
-TM = TypeVar("TM")
+TM = TypeVar("TM", default=None)
+TT = TypeVar("TT")
 
 
-class PortView(OutPort, Generic[TP]):
-    host: Port[Any] | PortView[Any]
+class PortView(OutPort, Generic[TP, TM]):
+    host: Port[Any, TM] | PortView[Any, TM]
     view_transform: Callable[[Any], TP]
 
     parent_node: Node
     _is_branched_pipeline_head: bool
 
     def __init__(
-        self, host: Port[Any] | PortView[Any], view_transform: Callable[[Any], TP]
+        self,
+        host: Port[Any, TM] | PortView[Any, TM],
+        view_transform: Callable[[Any], TP],
     ) -> None:
         super().__init__()
         self.host = host
@@ -138,24 +141,36 @@ class PortView(OutPort, Generic[TP]):
         t = self.view_transform(t)
         return t
 
+    @property
+    def meta(self) -> TM | None:
+        return self.host.meta
+
+    def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
+        if isinstance(items, GraphPartGroup):
+            parts = items._parts
+            parts = [self] + parts
+            return GraphPartGroup(parts)  # type: ignore
+        else:
+            return GraphPartGroup([self, items])
+
     def connect(self, other: InPort[TP]) -> Edge:
         return Edge(self, other)
 
     def __rshift__(self, other: InPort[TP]) -> Edge:
         return self.connect(other)
 
-    def print(self) -> PortView[TP]:
+    def print(self) -> PortView[TP, TM]:
         def t(v):
             print(self.value)
             return v
 
         return PortView(self, t)
 
-    def map(self, func: Callable[[TP], TM]) -> PortView[TM]:
+    def map(self, func: Callable[[TP], TT]) -> PortView[TT, TM]:
         return PortView(self, func)
 
     def isinstance(
-        self, data_type: type[TM], branch_func: Callable[[Port[TM]], GraphPartGroup]
+        self, data_type: type[TT], branch_func: Callable[[Port[TT, TM]], GraphPartGroup]
     ) -> Block:
         # Important: avoid binding self.value at definition time.
         def cond(t=data_type):
@@ -165,9 +180,32 @@ class PortView(OutPort, Generic[TP]):
 
         return Block(group, condition=cond)
 
+    def match(
+        self,
+        func: Callable[[TP], Any],
+        branches: Dict[Any, GraphPartGroup],
+    ) -> GraphPartGroup:
+        results = []
+        for k in branches.keys():
 
-class Port(Generic[TP]):
+            def cond(k=k):
+                v = self.value
+                assert v is not None
+                return func(v) == k
+
+            results.append(Block(branches[k], condition=cond))
+
+        return GraphPartGroup(results)
+
+
+if TYPE_CHECKING:
+    GraphPart = Empty | Node | Edge | Block | PortView[Any, Any]
+
+
+class Port(Generic[TP, TM]):
     value: Optional[TP]
+    meta: TM
+
     parent_node: Node
 
     on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
@@ -183,9 +221,13 @@ class Port(Generic[TP]):
         self.on_change = on_change
         self._is_branched_pipeline_head = False
 
-    def __ilshift__(self, value: TP) -> Port[TP]:
+    def __ilshift__(self, value: TP | Tuple[TP, TM]) -> Port[TP, TM]:
         """port <<= value: set values of a port."""
-        self.value = value
+        if isinstance(value, Tuple):
+            self.value = value[0]
+            self.meta = value[1]
+        else:
+            self.value = value
 
         g = self.parent_node.parent_graph
         assert g is not None
@@ -214,11 +256,11 @@ class Port(Generic[TP]):
     def __pos__(self) -> Pipeline:
         return self.get_branched_pipeline()
 
-    def add_pipeline(self, others: GraphPart | GraphPartGroup) -> Port:
+    def add_pipeline(self, others: GraphPart | GraphPartGroup) -> Port[TP, TM]:
         self += others
         return self
 
-    def __iadd__(self, others: GraphPart | GraphPartGroup) -> Port:
+    def __iadd__(self, others: GraphPart | GraphPartGroup) -> Port[TP, TM]:
         p = self.get_branched_pipeline()
         p += others
         p.check_edges()
@@ -233,14 +275,14 @@ class Port(Generic[TP]):
     def __lshift__(self, other: OutPort[TP]) -> Edge:
         return Edge(other, self)
 
-    def print(self) -> PortView[TP]:
+    def print(self) -> PortView[TP, TM]:
         def t(v):
             print(self.value)
             return v
 
         return PortView(self, t)
 
-    def map(self, func: Callable[[TP], TM]) -> PortView[TM]:
+    def map(self, func: Callable[[TP], TT]) -> PortView[TT, TM]:
         return PortView(self, func)
 
     def match(
@@ -261,7 +303,7 @@ class Port(Generic[TP]):
         return GraphPartGroup(results)
 
     def isinstance(
-        self, data_type: type[TM], branch_func: Callable[[Port[TM]], GraphPartGroup]
+        self, data_type: type[TT], branch_func: Callable[[Port[TT]], GraphPartGroup]
     ) -> Block:
         # Important: avoid binding self.value at definition time.
         def cond(t=data_type):

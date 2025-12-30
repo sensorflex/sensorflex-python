@@ -19,7 +19,7 @@ from typing import (
 
 from sensorflex.utils.logging import get_logger
 
-from ._flow import Block, Edge, Empty, GraphPartGroup, Port
+from ._flow import Block, Edge, Empty, GraphPartGroup, Port, PortView
 from ._node import Node
 
 if TYPE_CHECKING:
@@ -145,9 +145,14 @@ class Pipeline:
             self.nodes.append(node)
             self._instructions.append(node)
 
+        elif isinstance(item, PortView):
+            # _: PortView = item
+            pass
+
         elif isinstance(item, Empty):
-            _: Empty = item
+            # _: Empty = item
             # TODO: maybe its not a good idea to have Empty.
+            pass
 
         elif isinstance(item, Block):
             self._instructions.append(item)
@@ -175,7 +180,7 @@ class GraphExecMixin:
 
     _loop: asyncio.AbstractEventLoop
 
-    def _on_port_change(self, port: Port, by_sensorflex: bool = False):
+    def _on_port_change(self, port: Port[Any, Any], by_sensorflex: bool = False):
         if port in self._port_pipeline_map:
             self.schedule_exec(port)
 
@@ -252,7 +257,7 @@ class Graph(GraphExecMixin):
         self.nodes.append(node)
         return node
 
-    def add_pipeline(self, port: Port, pipeline: Pipeline):
+    def add_pipeline(self, port: Port[Any, Any], pipeline: Pipeline):
         if port in self._port_pipeline_map:
             self._port_pipeline_map[port].append(pipeline)
         else:
