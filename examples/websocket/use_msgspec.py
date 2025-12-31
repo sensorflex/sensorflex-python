@@ -2,6 +2,7 @@
 
 import asyncio
 from typing import List, Union
+from uuid import UUID
 
 import msgspec
 
@@ -47,7 +48,7 @@ class SenderNode(Node):
 
 
 class PrintUserNode(Node):
-    i_user: Port[User]
+    i_user: Port[User, UUID]
 
     def __init__(self, name: Union[str, None] = None) -> None:
         super().__init__(name)
@@ -55,7 +56,7 @@ class PrintUserNode(Node):
 
     def forward(self):
         msg = ~self.i_user
-        print(f"Received user: {msg}")
+        print(f"Received user: {msg} from client, port meta is:", self.i_user.meta)
 
 
 class PrintPoseNode(Node):
@@ -82,12 +83,12 @@ def get_graph():
         + (pp_node := PrintPoseNode())
     )
 
-    g.main_pipeline += sd_node + (sd_node.o_data.map(encode) >> c_node.i_message)
+    g.main_pipeline += sd_node + (sd_node.o_data.map(encode) > c_node.i_message)
 
     s_node.o_message += (
         (msg := s_node.o_message.map(decode))
-        + msg.isinstance(User, lambda o_data: (o_data >> pu_node.i_user) + pu_node)
-        + msg.isinstance(Pose, lambda o_data: (o_data >> pp_node.i_pose) + pp_node)
+        + msg.isinstance(User, lambda o_data: (o_data > pu_node.i_user) + pu_node)
+        + msg.isinstance(Pose, lambda o_data: (o_data > pp_node.i_pose) + pp_node)
     )
 
     return g, sd_node

@@ -205,6 +205,7 @@ class WebSocketServerNode(Node):
     async def _send_message(self):
         msg = ~self.i_message
         client_id = self.i_message.meta
+        assert client_id is not None
 
         if client_id in self._clients:
             conn = self._clients[client_id]

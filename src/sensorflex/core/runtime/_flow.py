@@ -51,6 +51,7 @@ T_contra = TypeVar("T_contra", contravariant=True)
 @runtime_checkable
 class InPort(Protocol[T_contra]):
     value: Optional[Any]
+    meta: Any
     parent_node: Node
 
     def __lshift__(self, other: OutPort[T_contra]) -> Edge: ...
@@ -59,6 +60,7 @@ class InPort(Protocol[T_contra]):
 @runtime_checkable
 class OutPort(Protocol[T_co]):
     value: Optional[Any]
+    meta: Any
     parent_node: Node
 
     _is_branched_pipeline_head: bool
@@ -76,6 +78,8 @@ class Edge:
     src: OutPort[Any]
     dst: InPort[Any]
 
+    _transfer_meta: bool = False
+
     def __add__(self, items: GraphPart | GraphPartGroup) -> GraphPartGroup:
         if isinstance(items, GraphPartGroup):
             parts = items._parts
@@ -87,6 +91,9 @@ class Edge:
     def forward(self):
         v = self.src.value
         self.dst.value = v
+
+        if self._transfer_meta and hasattr(self.src, "meta"):
+            self.dst.meta = self.src.meta
 
 
 @dataclass(frozen=True)
@@ -153,15 +160,18 @@ class PortView(OutPort, Generic[TP, TM]):
         else:
             return GraphPartGroup([self, items])
 
-    def connect(self, other: InPort[TP]) -> Edge:
-        return Edge(self, other)
+    def connect(self, other: InPort[TP], transfer_meta: bool = False) -> Edge:
+        return Edge(self, other, transfer_meta)
+
+    def __gt__(self, other: InPort[TP]) -> Edge:
+        return self.connect(other)
 
     def __rshift__(self, other: InPort[TP]) -> Edge:
-        return self.connect(other)
+        return self.connect(other, transfer_meta=True)
 
     def print(self) -> PortView[TP, TM]:
         def t(v):
-            print(self.value)
+            print(self.value, self.meta)
             return v
 
         return PortView(self, t)
@@ -204,7 +214,7 @@ if TYPE_CHECKING:
 
 class Port(Generic[TP, TM]):
     value: Optional[TP]
-    meta: TM
+    meta: TM | None = None
 
     parent_node: Node
 
@@ -266,11 +276,14 @@ class Port(Generic[TP, TM]):
         p.check_edges()
         return self
 
-    def connect(self, other: InPort[TP]) -> Edge:
-        return Edge(self, other)
+    def connect(self, other: InPort[TP], transfer_meta: bool = False) -> Edge:
+        return Edge(self, other, transfer_meta)
+
+    def __gt__(self, other: InPort[TP]) -> Edge:
+        return self.connect(other)
 
     def __rshift__(self, other: InPort[TP]) -> Edge:
-        return self.connect(other)
+        return self.connect(other, transfer_meta=True)
 
     def __lshift__(self, other: OutPort[TP]) -> Edge:
         return Edge(other, self)
