@@ -4,14 +4,12 @@ from .core.runtime import (
     Graph,
     Node,
     Port,
-    RouterNode,
     ThreadOp,
     ThreadState,
 )
 
 __all__ = [
     "Node",
-    "RouterNode",
     "Port",
     "Graph",
     "FutureOp",

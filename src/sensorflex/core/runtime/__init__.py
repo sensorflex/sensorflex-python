@@ -8,14 +8,13 @@ from ._flow import (
     ThreadState,
 )
 from ._graph import Graph
-from ._node import Node, RouterNode
+from ._node import Node
 
 __all__ = [
     "Edge",
     "Empty",
     "Graph",
     "Node",
-    "RouterNode",
     "Port",
     "FutureOp",
     "FutureState",
