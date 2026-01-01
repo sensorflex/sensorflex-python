@@ -5,10 +5,11 @@ import json
 import time
 from typing import Any, Union
 
+from websockets.typing import Data
+
 from sensorflex import Graph, Node, Port
 from sensorflex.library.net import (
     WebSocketClientNode,
-    WebSocketMessageEnvelope,
     WebSocketServerNode,
 )
 from sensorflex.utils.logging import configure_default_logging
@@ -16,20 +17,8 @@ from sensorflex.utils.logging import configure_default_logging
 configure_default_logging()
 
 
-class PrintNode(Node):
-    field: Port[WebSocketMessageEnvelope]
-
-    def __init__(self, name: Union[str, None] = None) -> None:
-        super().__init__(name)
-        self.field = Port(None)
-
-    def forward(self):
-        msg = ~self.field
-        print(msg.payload)
-
-
 class DelayNode(Node):
-    i_value: Port[WebSocketMessageEnvelope]
+    i_value: Port[Data]
     o_value: Port[Any]
 
     def __init__(self, name: Union[str, None] = None) -> None:
@@ -40,7 +29,7 @@ class DelayNode(Node):
     def forward(self):
         time.sleep(0.5)
         msg = ~self.i_value
-        msg = json.loads(msg.payload)
+        msg = json.loads(msg)
         msg["i"] = msg["i"] + 1
         self.o_value <<= json.dumps(msg)
 
@@ -49,17 +38,14 @@ def get_graph():
     g = Graph()
     g += (
         (s_node := WebSocketServerNode())
-        + (p_node := PrintNode())
         + (c_node := WebSocketClientNode())
         + (d_node := DelayNode())
     )
 
     s_node.o_message += (
-        (s_node.o_message >> p_node.field)
-        + p_node
-        + (s_node.o_message >> d_node.i_value)
+        (s_node.o_message.print() > d_node.i_value)
         + d_node
-        + (d_node.o_value >> c_node.i_message)
+        + (d_node.o_value > c_node.i_message)
         + c_node
     )
 

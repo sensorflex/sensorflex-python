@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from enum import Enum, auto
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Tuple
 
 import cv2
 import numpy as np
@@ -212,6 +212,17 @@ class ImageEncodeNode(Node):
         buf = codec_func_map[self._codec](img)
 
         self.o_buf <<= buf
+
+
+def get_image_coder(
+    codec: ImageCodec,
+) -> Tuple[Callable[[NDArray], bytes], Callable[[bytes], NDArray]]:
+    codec_func_map = {
+        ImageCodec.JPEG: (jpeg_encode, jpeg_decode),
+        ImageCodec.PNG: (png_encode, png_decode),
+    }
+
+    return codec_func_map[codec]
 
 
 class RandImgNode(Node):

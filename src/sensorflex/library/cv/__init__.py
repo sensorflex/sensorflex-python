@@ -8,6 +8,7 @@ from ._webcam import (
     ImageEncodeNode,
     RandImgNode,
     WebcamNode,
+    get_image_coder,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "ImageCodec",
     "ImageEncodeNode",
     "ImageDecodeNode",
+    "get_image_coder",
 ]
