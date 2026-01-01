@@ -63,8 +63,6 @@ class OutPort(Protocol[T_co]):
     meta: Any
     parent_node: Node
 
-    _is_branched_pipeline_head: bool
-
     def __rshift__(self, other: InPort[T_co]) -> Edge: ...
 
 
@@ -92,7 +90,7 @@ class Edge:
         v = self.src.value
         self.dst.value = v
 
-        if self._transfer_meta and hasattr(self.src, "meta"):
+        if hasattr(self.src, "meta"):
             self.dst.meta = self.src.meta
 
 
@@ -127,7 +125,6 @@ class PortView(OutPort, Generic[TP, TM]):
     view_transform: Callable[[Any], TP]
 
     parent_node: Node
-    _is_branched_pipeline_head: bool
 
     def __init__(
         self,
@@ -139,7 +136,6 @@ class PortView(OutPort, Generic[TP, TM]):
         self.view_transform = view_transform
 
         self.parent_node = host.parent_node
-        self._is_branched_pipeline_head = host._is_branched_pipeline_head
 
     @property
     def value(self) -> TP:
@@ -214,13 +210,11 @@ if TYPE_CHECKING:
 
 class Port(Generic[TP, TM]):
     value: Optional[TP]
-    meta: TM | None = None
+    meta: TM
 
     parent_node: Node
 
     on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
-
-    _is_branched_pipeline_head: bool
 
     def __init__(
         self,
@@ -229,7 +223,6 @@ class Port(Generic[TP, TM]):
     ) -> None:
         self.value = value
         self.on_change = on_change
-        self._is_branched_pipeline_head = False
 
     def __ilshift__(self, value: TP | Tuple[TP, TM]) -> Port[TP, TM]:
         """port <<= value: set values of a port."""
@@ -258,8 +251,6 @@ class Port(Generic[TP, TM]):
 
         p = Pipeline(g)
         g.add_pipeline(self, p)
-
-        self._is_branched_pipeline_head = True
 
         return p
 
