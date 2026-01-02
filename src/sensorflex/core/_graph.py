@@ -210,8 +210,6 @@ class PortView(Instruction, TransmissiblePort, Generic[TP, TM]):
         t = self.host.value
         assert t is not None
         t = self.view_transform(t)
-
-        self._value_cache = t
         return t
 
     @property
@@ -219,7 +217,10 @@ class PortView(Instruction, TransmissiblePort, Generic[TP, TM]):
         return self.host.meta
 
     def forward(self) -> None:
-        pass
+        t = self.host.value
+        assert t is not None
+        t = self.view_transform(t)
+        self._value_cache = t
 
     def connect(self, other: ReceivablePort[TP], transfer_meta: bool = False) -> Edge:
         return Edge(self, other, transfer_meta)
@@ -451,19 +452,16 @@ class Pipeline:
         # Clear cache before execution.
         self._port_view_accessed.clear()
 
-        def _clear_port_view(p: PortView):
-            if p not in self._port_view_accessed:
-                p._value_cache = None
-                self._port_view_accessed.append(p)
-
         def _exec(instructions: List[Instruction]):
+            pvs: List[PortView] = []
+
             for i in instructions:
                 if isinstance(i, PortView):
-                    _clear_port_view(i)
+                    # Forward on PortView evaluates the transformation
+                    # and cache the result
+                    i.forward()
+                    pvs.append(i)
                 elif isinstance(i, Edge):
-                    if isinstance(i.src, PortView):
-                        _clear_port_view(i.src)
-
                     i.forward()
                     self.parent_graph._on_port_change(
                         cast(Port, i.dst), by_sensorflex=True
@@ -478,6 +476,10 @@ class Pipeline:
                         _exec(i.parts)
                 else:
                     raise ValueError("Unrecognized graph part type.")
+
+            # Clear cache after pipeline execution.
+            for pv in pvs:
+                pv._value_cache = None
 
         _exec(self._instructions)
 
