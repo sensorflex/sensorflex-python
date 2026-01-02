@@ -24,33 +24,37 @@ def get_graph():
 
     # Run the following code on a computer with webcam.
     g += (
-        c_node := WebSocketClientNode(
-            uri="ws://localhost:8765",  # Change this.
-            config=WebSocketClientConfig(
-                max_size=None,
-                compression=None,  # Important! Avoid using compression on encoded data.
-            ),
-        )
-    ) + (cam_node := WebcamNode())
+        (
+            c_node := WebSocketClientNode(
+                uri="ws://localhost:8765",  # Change this.
+                config=WebSocketClientConfig(
+                    max_size=None,
+                    compression=None,  # Important! Avoid compression on encoded data.
+                ),
+            )
+        ),
+        (cam_node := WebcamNode()),
+    )
 
-    cam_node.o_frame += (cam_node.o_frame.map(encode) > c_node.i_message) + c_node
+    cam_node.o_frame += c_node[(cam_node.o_frame.map(encode) > c_node.i_message)]
 
     # Run this part on another computer.
     g += (
-        s_node := WebSocketServerNode(
-            config=WebSocketServerConfig(
-                max_size=None,
-                compression=None,  # Important! Avoid using compression on encoded data.
+        (
+            s_node := WebSocketServerNode(
+                config=WebSocketServerConfig(
+                    max_size=None,
+                    compression=None,  # Important! Avoid compression on encoded data.
+                )
             )
-        )
-    ) + (v_node := RerunVideoVisNode())
-
-    s_node.o_message += (
-        (img := s_node.o_message.map(lambda v: decode(cast(bytes, v))))
-        # avoid using cv2.cvtColor for better performance
-        + (img.map(lambda x: x[:, :, ::-1]) > v_node.i_frame)
-        + v_node
+        ),
+        (v_node := RerunVideoVisNode()),
     )
+
+    s_node.o_message += v_node[
+        s_node.o_message.map(lambda v: decode(cast(bytes, v))[:, :, ::-1])
+        > v_node.i_frame
+    ]
 
     return g
 

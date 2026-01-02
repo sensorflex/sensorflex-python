@@ -4,28 +4,365 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from threading import Thread
 from typing import (
-    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
     Dict,
     List,
-    TypeVar,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
     cast,
     overload,
+    runtime_checkable,
 )
+
+from typing_extensions import Generic, TypeVar
 
 from sensorflex.utils.logging import get_logger
 
-from ._flow import Block, Edge, Empty, GraphPartGroup, Port, PortView
-from ._node import Node
-
-if TYPE_CHECKING:
-    from ._flow import GraphPart
-
 logger = get_logger("Graph")
+
+
+class Instruction(ABC):
+    @abstractmethod
+    def forward(self) -> None:
+        pass
+
+    def __add__(self, items: Instruction | List[Instruction]) -> List[Instruction]:
+        if isinstance(items, list):
+            return [self] + items
+        else:
+            return [self, items]
+
+
+T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
+
+
+@runtime_checkable
+class ReceivablePort(Protocol[T_contra]):
+    value: Optional[Any]
+    meta: Any
+    parent_node: Node
+
+    def __lshift__(self, other: TransmissiblePort[T_contra]) -> Edge: ...
+
+
+@runtime_checkable
+class TransmissiblePort(Protocol[T_co]):
+    value: Optional[Any]
+    meta: Any
+    parent_node: Node
+
+    def __rshift__(self, other: ReceivablePort[T_co]) -> Edge: ...
+
+
+TP = TypeVar("TP")
+TM = TypeVar("TM", default=None)  # type: ignore
+TT = TypeVar("TT")
+
+
+class Port(Generic[TP, TM]):
+    value: Optional[TP]
+    meta: TM
+
+    parent_node: Node
+
+    on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None
+
+    def __init__(
+        self,
+        value: Optional[TP],
+        on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None = None,
+    ) -> None:
+        self.value = value
+        self.on_change = on_change
+
+    def __ilshift__(self, value: TP | Tuple[TP, TM]) -> Port[TP, TM]:
+        """port <<= value: set values of a port."""
+        if isinstance(value, Tuple):
+            self.value = value[0]
+            self.meta = value[1]
+        else:
+            self.value = value
+
+        g = self.parent_node.parent_graph
+        assert g is not None
+        g._on_port_change(self, True)
+
+        return self
+
+    def __invert__(self) -> TP:
+        """~port: get values from a port."""
+        assert self.value is not None
+        return self.value
+
+    def get_branched_pipeline(self) -> Pipeline:
+        from ._graph import Pipeline
+
+        g = self.parent_node.parent_graph
+        assert g is not None
+
+        p = Pipeline(g)
+        g.add_pipeline(self, p)
+
+        return p
+
+    def add_pipeline(self, others: Instruction | Sequence[Instruction]) -> Port[TP, TM]:
+        p = self.get_branched_pipeline()
+        p += others
+        p.check_edges()
+        return self
+
+    def __iadd__(self, others: Instruction | Sequence[Instruction]) -> Port[TP, TM]:
+        return self.add_pipeline(others)
+
+    def connect(self, other: ReceivablePort[TP], transfer_meta: bool = False) -> Edge:
+        return Edge(self, other, transfer_meta)
+
+    def __gt__(self, other: ReceivablePort[TP]) -> Edge:
+        return self.connect(other)
+
+    def __rshift__(self, other: ReceivablePort[TP]) -> Edge:
+        return self.connect(other, transfer_meta=True)
+
+    def __le__(self, other: TransmissiblePort[TP]) -> Edge:
+        return Edge(other, self, False)
+
+    def __lshift__(self, other: TransmissiblePort[TP]) -> Edge:
+        # return other.connect(self, transfer_meta=True)
+        return Edge(other, self, True)
+
+    def print(self) -> PortView[TP, TM]:
+        def t(v):
+            print(self.value)
+            return v
+
+        return PortView(self, t)
+
+    def map(self, func: Callable[[TP], TT]) -> PortView[TT, TM]:
+        return PortView(self, func)
+
+    def match(
+        self,
+        func: Callable[[TP], Any],
+        branches: Dict[Any, List[Instruction]],
+    ) -> List[Instruction]:
+        results: List[Instruction] = []
+        for k in branches.keys():
+
+            def cond(k=k):
+                v = self.value
+                assert v is not None
+                return func(v) == k
+
+            results.append(Block(branches[k], condition=cond))
+
+        return results
+
+    def isinstance(
+        self,
+        data_type: type[TT],
+        branch_func: Callable[[Port[TT]], Instruction | Sequence[Instruction]],
+    ) -> Block:
+        # Important: avoid binding self.value at definition time.
+        def cond(t=data_type):
+            return isinstance(self.value, t)
+
+        group = branch_func(self)  # type: ignore
+
+        if isinstance(group, Instruction):
+            return Block([group], condition=cond)
+        else:
+            return Block(list(group), condition=cond)
+
+
+class PortView(Instruction, TransmissiblePort, Generic[TP, TM]):
+    host: Port[Any, TM] | PortView[Any, TM]
+    view_transform: Callable[[Any], TP]
+
+    parent_node: Node
+
+    _value_cache: TP | None = None
+
+    def __init__(
+        self,
+        host: Port[Any, TM] | PortView[Any, TM],
+        view_transform: Callable[[Any], TP],
+    ) -> None:
+        super().__init__()
+        self.host = host
+        self.view_transform = view_transform
+
+        self.parent_node = host.parent_node
+
+    @property
+    def value(self) -> TP:
+        if self._value_cache is not None:
+            return self._value_cache
+
+        t = self.host.value
+        assert t is not None
+        t = self.view_transform(t)
+
+        self._value_cache = t
+        return t
+
+    @property
+    def meta(self) -> TM | None:
+        return self.host.meta
+
+    def forward(self) -> None:
+        pass
+
+    def connect(self, other: ReceivablePort[TP], transfer_meta: bool = False) -> Edge:
+        return Edge(self, other, transfer_meta)
+
+    def __gt__(self, other: ReceivablePort[TP]) -> Edge:
+        return self.connect(other)
+
+    def __rshift__(self, other: ReceivablePort[TP]) -> Edge:
+        return self.connect(other, transfer_meta=True)
+
+    def print(self) -> PortView[TP, TM]:
+        def t(v):
+            print(self.value, self.meta)
+            return v
+
+        return PortView(self, t)
+
+    def map(self, func: Callable[[TP], TT]) -> PortView[TT, TM]:
+        return PortView(self, func)
+
+    def isinstance(
+        self,
+        data_type: type[TT],
+        branch_func: Callable[[PortView[TT, TM]], Instruction | Sequence[Instruction]],
+    ) -> Block:
+        # Important: avoid binding self.value at definition time.
+        def cond(t=data_type):
+            return isinstance(self.value, t)
+
+        group = branch_func(self)  # type: ignore
+
+        if isinstance(group, Instruction):
+            return Block([group], condition=cond)
+        else:
+            return Block(list(group), condition=cond)
+
+    def match(
+        self,
+        func: Callable[[TP], Any],
+        branches: Dict[Any, List[Instruction]],
+    ) -> List[Instruction]:
+        results: List[Instruction] = []
+        for k in branches.keys():
+
+            def cond(k=k):
+                v = self.value
+                assert v is not None
+                return func(v) == k
+
+            results.append(Block(branches[k], condition=cond))
+
+        return results
+
+
+@dataclass(frozen=True)
+class Edge(Instruction):
+    src: TransmissiblePort[Any]
+    dst: ReceivablePort[Any]
+
+    _transfer_meta: bool = False
+
+    def forward(self):
+        v = self.src.value
+        self.dst.value = v
+
+        if hasattr(self.src, "meta"):
+            self.dst.meta = self.src.meta
+
+
+@dataclass(frozen=True)
+class Block(Instruction):
+    parts: List[Instruction]
+    condition: Callable | None = None
+
+    def forward(self):
+        for i in self.parts:
+            i.forward()
+
+
+class Node(Instruction):
+    name: str
+    parent_graph: Graph | None
+
+    _ports: dict[str, Port[Any]]
+
+    _pre_ins: List[Instruction]
+    _pos_ins: List[Instruction]
+
+    _exec_cond: Callable[[Any], bool] | None = None
+
+    def __init__(self, name: Optional[str] = None) -> None:
+        super().__init__()
+        self.name = name if name is not None else self.__class__.__name__
+        self.parent_graph = None
+        self._ports = {}
+
+        self._pre_ins = []
+        self._pos_ins = []
+
+    def forward(self) -> None: ...
+
+    def _as_list(self, x: Instruction | Sequence[Instruction]) -> list[Instruction]:
+        # Convert any Sequence[Instruction] (list/tuple/...) to list[Instruction]
+        if isinstance(x, Instruction):
+            return [x]
+        # x is a Sequence[Instruction]
+        return list(x)
+
+    def __getitem__(
+        self,
+        ins: Instruction
+        | Sequence[Instruction]
+        | Tuple[
+            None | Instruction | Sequence[Instruction],
+            Instruction | Sequence[Instruction],
+        ],
+    ):
+        # reset or keep? (I'm assuming "set" semantics each call)
+        self._pre_ins = []
+        self._pos_ins = []
+
+        if isinstance(ins, tuple):
+            pre, pos = ins
+
+            if pre is not None:
+                self._pre_ins = self._as_list(pre)
+
+            self._pos_ins = self._as_list(pos)
+            return self
+
+        # non-tuple cases
+        if isinstance(ins, Instruction):
+            self._pre_ins = [ins]
+        else:
+            # Sequence[Instruction]
+            self._pre_ins = list(ins)
+
+        return self
+
+    def when(self, cond: Callable[[Any], bool]) -> Node:
+        # TODO: Need to return a NodeView object.
+        self._exec_cond = cond
+        return self
 
 
 NP = TypeVar("NP", bound=Node)
@@ -55,10 +392,12 @@ class Pipeline:
     edges: List[Edge]
     parent_graph: Graph
 
-    _instructions: List[GraphPart]
+    _instructions: List[Instruction]
 
     _node_edge_map: Dict[Node, List[Edge]]
     _exec_condition: Callable[..., bool] | None = None
+
+    _port_view_accessed: List[PortView]
 
     def __init__(
         self,
@@ -72,6 +411,7 @@ class Pipeline:
 
         self._instructions = []
         self._exec_condition = exec_condition
+        self._port_view_accessed = []
 
     def check_edges(self):
         # TODO: rethink how to design this feature.
@@ -108,18 +448,34 @@ class Pipeline:
             if not self._exec_condition():
                 return
 
-        def _exec(instructions: List[GraphPart]):
+        # Clear cache before execution.
+        self._port_view_accessed.clear()
+
+        def _clear_port_view(p: PortView):
+            if p not in self._port_view_accessed:
+                p._value_cache = None
+                self._port_view_accessed.append(p)
+
+        def _exec(instructions: List[Instruction]):
             for i in instructions:
-                if isinstance(i, Edge):
+                if isinstance(i, PortView):
+                    _clear_port_view(i)
+                elif isinstance(i, Edge):
+                    if isinstance(i.src, PortView):
+                        _clear_port_view(i.src)
+
                     i.forward()
                     self.parent_graph._on_port_change(
                         cast(Port, i.dst), by_sensorflex=True
                     )
                 elif isinstance(i, Node):
+                    _exec(i._pre_ins)
                     i.forward()
+                    _exec(i._pos_ins)
+
                 elif isinstance(i, Block):
                     if i.condition is None or i.condition():
-                        _exec(i.instructions._parts)
+                        _exec(i.parts)
                 else:
                     raise ValueError("Unrecognized graph part type.")
 
@@ -129,12 +485,12 @@ class Pipeline:
         self += node_or_edge
 
     @overload
-    def __iadd__(self, item: GraphPart) -> Pipeline: ...
+    def __iadd__(self, item: Instruction) -> Pipeline: ...
 
     @overload
-    def __iadd__(self, item: GraphPartGroup) -> Pipeline: ...
+    def __iadd__(self, item: Sequence[Instruction]) -> Pipeline: ...
 
-    def __iadd__(self, item: GraphPart | GraphPartGroup) -> Pipeline:
+    def __iadd__(self, item: Instruction | Sequence[Instruction]) -> Pipeline:
         if isinstance(item, Edge):
             edge: Edge = item
             self.add_edge(edge)
@@ -149,73 +505,22 @@ class Pipeline:
             self._instructions.append(node)
 
         elif isinstance(item, PortView):
-            # _: PortView = item
-            pass
-
-        elif isinstance(item, Empty):
-            # _: Empty = item
-            # TODO: maybe its not a good idea to have Empty.
-            pass
+            self._instructions.append(item)
 
         elif isinstance(item, Block):
             self._instructions.append(item)
 
-        elif isinstance(item, GraphPartGroup):
+        elif isinstance(item, tuple) or isinstance(item, list):
             for v in item:
                 self += v
 
-        return self
-
-    def __add__(self, part: Node | Edge | GraphPartGroup) -> Pipeline:
-        self += part
         return self
 
 
 G = TypeVar("G", bound=Node)
 
 
-class GraphExecMixin:
-    main_pipeline: Pipeline
-    _event_queue: asyncio.Queue[Port]
-
-    _node_edge_map: Dict[Node, List[Edge]]
-    _port_pipeline_map: Dict[Port, List[Pipeline]]
-
-    _loop: asyncio.AbstractEventLoop
-
-    def _on_port_change(self, port: Port[Any, Any], by_sensorflex: bool = False):
-        if port in self._port_pipeline_map:
-            self.schedule_exec(port)
-
-        if by_sensorflex:
-            if port.on_change is not None:
-                if isinstance(port.on_change, list):
-                    for func in port.on_change:
-                        _call_func(func)
-                else:
-                    _call_func(port.on_change)
-
-    def _exec_pipelines(self, port: Port):
-        for pipeline in self._port_pipeline_map[port]:
-            pipeline.run()
-
-    def schedule_exec(self, port: Port):
-        self._loop.call_soon_threadsafe(self._exec_pipelines, port)
-
-    async def wait_forever(self):
-        while True:
-            _ = await self._event_queue.get()
-
-    def wait_forever_as_task(self) -> asyncio.Task:
-        return asyncio.create_task(self.wait_forever())
-
-    def run_in_thread(self) -> Thread:
-        t = Thread(target=self.main_pipeline.run)
-        t.start()
-        return t
-
-
-class Graph(GraphExecMixin):
+class Graph:
     nodes: List[Node]
     edges: List[Edge]
 
@@ -254,8 +559,39 @@ class Graph(GraphExecMixin):
 
         return True
 
+    def _on_port_change(self, port: Port[Any, Any], by_sensorflex: bool = False):
+        if port in self._port_pipeline_map:
+            self.schedule_exec(port)
+
+        if by_sensorflex:
+            if port.on_change is not None:
+                if isinstance(port.on_change, list):
+                    for func in port.on_change:
+                        _call_func(func)
+                else:
+                    _call_func(port.on_change)
+
+    def _exec_pipelines(self, port: Port):
+        for pipeline in self._port_pipeline_map[port]:
+            pipeline.run()
+
+    def schedule_exec(self, port: Port):
+        self._loop.call_soon_threadsafe(self._exec_pipelines, port)
+
+    async def wait_forever(self):
+        while True:
+            _ = await self._event_queue.get()
+
+    def wait_forever_as_task(self) -> asyncio.Task:
+        return asyncio.create_task(self.wait_forever())
+
+    def run_in_thread(self) -> Thread:
+        t = Thread(target=self.main_pipeline.run)
+        t.start()
+        return t
+
     def add_node(self, node: G) -> G:
-        node.parent_graph = cast(Graph, self)
+        node.parent_graph = self
         self._register_ports(node)
         self.nodes.append(node)
         return node
@@ -266,21 +602,12 @@ class Graph(GraphExecMixin):
         else:
             self._port_pipeline_map[port] = [pipeline]
 
-    def __iadd__(self, part: Node | GraphPartGroup) -> Graph:
+    def __iadd__(self, part: Node | Sequence[Node]) -> Graph:
         if isinstance(part, Node):
             self.add_node(part)
         else:
-            self = self + part
-        return self
-
-    def __add__(self, part: Node | GraphPartGroup) -> Graph:
-        if isinstance(part, GraphPartGroup):
             for n in part:
-                assert isinstance(n, Node)
                 self.add_node(n)
-        else:
-            self.add_node(part)
-
         return self
 
     def __lshift__(self, node: G) -> G:

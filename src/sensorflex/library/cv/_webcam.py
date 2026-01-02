@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from sensorflex.core.runtime import FutureOp, Node, Port
+from sensorflex.core import FutureOp, Node, Port
 
 
 def jpeg_encode(img_bgr: NDArray, quality: int = 90) -> bytes:

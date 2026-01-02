@@ -26,7 +26,7 @@ from websockets.extensions.base import ClientExtensionFactory, ServerExtensionFa
 from websockets.http11 import SERVER, USER_AGENT, Request, Response
 from websockets.typing import Data, Origin, Subprotocol
 
-from sensorflex.core.runtime import FutureOp, FutureState, Node, Port
+from sensorflex.core import FutureOp, FutureState, Node, Port
 from sensorflex.utils.logging import get_logger
 
 logger = get_logger("WebSocket")

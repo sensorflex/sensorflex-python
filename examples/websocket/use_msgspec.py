@@ -74,21 +74,25 @@ class PrintPoseNode(Node):
 def get_graph():
     encode, decode = get_msgpack_coder_transforms(User, Pose)
 
+    def d(x):
+        print("Decoding triggered!")
+        return decode(x)
+
     g = Graph()
     g += (
-        (s_node := WebSocketServerNode())
-        + (c_node := WebSocketClientNode())
-        + (sd_node := SenderNode())
-        + (pu_node := PrintUserNode())
-        + (pp_node := PrintPoseNode())
+        (s_node := WebSocketServerNode()),
+        (c_node := WebSocketClientNode()),
+        (sd_node := SenderNode()),
+        (pu_node := PrintUserNode()),
+        (pp_node := PrintPoseNode()),
     )
 
-    g.main_pipeline += sd_node + (sd_node.o_data.map(encode) > c_node.i_message)
+    g.main_pipeline += sd_node[None, [sd_node.o_data.map(encode) > c_node.i_message]]
 
     s_node.o_message += (
-        (msg := s_node.o_message.map(decode))
-        + msg.isinstance(User, lambda o_data: (o_data > pu_node.i_user) + pu_node)
-        + msg.isinstance(Pose, lambda o_data: (o_data > pp_node.i_pose) + pp_node)
+        (msg := s_node.o_message.map(d)),
+        msg.isinstance(User, lambda user: pu_node[user > pu_node.i_user]),
+        msg.isinstance(Pose, lambda pose: pp_node[pose > pp_node.i_pose]),
     )
 
     return g, sd_node
