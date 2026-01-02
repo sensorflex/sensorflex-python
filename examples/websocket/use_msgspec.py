@@ -91,7 +91,7 @@ def get_graph():
 
     s_node.o_message += (
         (msg := s_node.o_message.map(d)),
-        msg.isinstance(User, lambda user: pu_node[user > pu_node.i_user]),
+        msg.isinstance(User, lambda user: pu_node[user >> pu_node.i_user]),
         msg.isinstance(Pose, lambda pose: pp_node[pose > pp_node.i_pose]),
     )
 

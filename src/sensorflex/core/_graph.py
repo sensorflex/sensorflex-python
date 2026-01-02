@@ -79,16 +79,17 @@ class Port(Generic[TP, TM]):
     def __init__(
         self,
         value: Optional[TP],
+        # meta: TM | None = None,
         on_change: Callable[[], Awaitable[Any]] | Awaitable[Any] | None = None,
     ) -> None:
         self.value = value
+        # self.meta = meta
         self.on_change = on_change
 
     def __ilshift__(self, value: TP | Tuple[TP, TM]) -> Port[TP, TM]:
         """port <<= value: set values of a port."""
-        if isinstance(value, Tuple):
-            self.value = value[0]
-            self.meta = value[1]
+        if isinstance(value, tuple) and len(value) == 2:
+            self.value, self.meta = value
         else:
             self.value = value
 
@@ -283,10 +284,9 @@ class Edge(Instruction):
     _transfer_meta: bool = False
 
     def forward(self):
-        v = self.src.value
-        self.dst.value = v
+        self.dst.value = self.src.value
 
-        if hasattr(self.src, "meta"):
+        if self._transfer_meta and hasattr(self.src, "meta"):
             self.dst.meta = self.src.meta
 
 
@@ -296,6 +296,7 @@ class Block(Instruction):
     condition: Callable | None = None
 
     def forward(self):
+        # if self.condition is None or self.condition():
         for i in self.parts:
             i.forward()
 
@@ -398,8 +399,6 @@ class Pipeline:
     _node_edge_map: Dict[Node, List[Edge]]
     _exec_condition: Callable[..., bool] | None = None
 
-    _port_view_accessed: List[PortView]
-
     def __init__(
         self,
         parent_graph: Graph,
@@ -412,7 +411,6 @@ class Pipeline:
 
         self._instructions = []
         self._exec_condition = exec_condition
-        self._port_view_accessed = []
 
     def check_edges(self):
         # TODO: rethink how to design this feature.
@@ -448,9 +446,6 @@ class Pipeline:
         if self._exec_condition is not None:
             if not self._exec_condition():
                 return
-
-        # Clear cache before execution.
-        self._port_view_accessed.clear()
 
         def _exec(instructions: List[Instruction]):
             pvs: List[PortView] = []
@@ -532,7 +527,6 @@ class Graph:
     _node_edge_map: Dict[Node, List[Edge]]
 
     _loop: asyncio.AbstractEventLoop
-    _event_queue: asyncio.Queue[Port]
 
     def __init__(self) -> None:
         self.nodes = []
@@ -549,7 +543,6 @@ class Graph:
 
         # For async/event-driven mode in a dedicated thread
         self._loop = asyncio.get_event_loop()
-        self._event_queue = asyncio.Queue()
 
     def _register_ports(self, node: Node) -> bool:
         for name in dir(node):
@@ -581,8 +574,7 @@ class Graph:
         self._loop.call_soon_threadsafe(self._exec_pipelines, port)
 
     async def wait_forever(self):
-        while True:
-            _ = await self._event_queue.get()
+        await asyncio.Future()
 
     def wait_forever_as_task(self) -> asyncio.Task:
         return asyncio.create_task(self.wait_forever())
