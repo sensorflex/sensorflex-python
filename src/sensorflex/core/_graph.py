@@ -301,6 +301,42 @@ class Block(Instruction):
             i.forward()
 
 
+# TODO: support better syntax.
+@dataclass(frozen=True)
+class Condition:
+    cond_func: Callable[[], bool]
+
+    def eval(self):
+        return self.cond_func()
+
+
+CT = TypeVar("CT")
+
+
+@dataclass(frozen=True)
+class TypeCondition(Generic[CT]):
+    obj: Any
+    target_type: type[CT]
+
+    def eval(self):
+        return isinstance(self.obj, self.target_type)
+
+
+@overload
+def when(
+    condition: TypeCondition[CT], branch: Callable[[CT], List[Instruction]]
+) -> Block: ...
+@overload
+def when(condition: Condition, branch: Callable[[], List[Instruction]]) -> Block: ...
+
+
+def when(condition, branch) -> Block:
+    if isinstance(condition, TypeCondition):
+        return Block(branch(condition.obj), condition)
+    else:
+        return Block(branch(), condition)
+
+
 class Node(Instruction):
     name: str
     parent_graph: Graph | None
@@ -359,11 +395,6 @@ class Node(Instruction):
             # Sequence[Instruction]
             self._pre_ins = list(ins)
 
-        return self
-
-    def when(self, cond: Callable[[Any], bool]) -> Node:
-        # TODO: Need to return a NodeView object.
-        self._exec_cond = cond
         return self
 
 

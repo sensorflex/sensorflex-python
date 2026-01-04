@@ -80,20 +80,29 @@ def get_graph():
 
     g = Graph()
     g += (
-        (s_node := WebSocketServerNode()),
-        (c_node := WebSocketClientNode()),
-        (sd_node := SenderNode()),
-        (pu_node := PrintUserNode()),
-        (pp_node := PrintPoseNode()),
+        s_node := WebSocketServerNode(),
+        c_node := WebSocketClientNode(),
+        sd_node := SenderNode(),
+        pu_node := PrintUserNode(),
+        pp_node := PrintPoseNode(),
     )
 
     g.main_pipeline += sd_node[None, [sd_node.o_data.map(encode) > c_node.i_message]]
 
     s_node.o_message += (
-        (msg := s_node.o_message.map(d)),
+        msg := s_node.o_message.map(d),
         msg.isinstance(User, lambda user: pu_node[user >> pu_node.i_user]),
         msg.isinstance(Pose, lambda pose: pp_node[pose > pp_node.i_pose]),
+        # of_type(msg, User, lambda pose: pp_node[pose > pp_node.i_pose])
+        # when(msg > 1, lambda pose: pp_node[pose > pp_node.i_pose])
+        # when(msg.isinstance(User), lambda pose: pp_node[pose > pp_node.i_pose])
+        # match(msg != )
     )
+
+    # with s_node.o_message.get_branched_pipeline():
+    #     msg = s_node.o_message.map(d)
+    #     msg.isinstance(User, lambda user: pu_node[user >> pu_node.i_user])
+    #     msg.isinstance(Pose, lambda pose: pp_node[pose > pp_node.i_pose])
 
     return g, sd_node
 
